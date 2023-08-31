@@ -1,6 +1,7 @@
 import contextlib
 import csv
 import math
+import sys
 import time
 import os
 import app_logger
@@ -26,6 +27,7 @@ class Morservice():
                                         username="default", password="6QVnYsC4iSzz")
         except Exception as ex:
             logger.info(f'Wrong connection {ex}')
+            sys.exit(1)
         return client
 
     def get_discrepancies_in_db_positive(self,ref = False):
