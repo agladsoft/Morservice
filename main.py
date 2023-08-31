@@ -40,7 +40,7 @@ class Morservice():
         return client
 
     def open_config(self):
-        with open("config.yaml", 'r') as stream:
+        with open(f"{os.environ.get('XL_IDP_PATH_MORSERVICE')}/config.yaml", 'r') as stream:
             data_loaded = yaml.safe_load(stream)
             month = data_loaded['month']
             year = data_loaded['year']
