@@ -4,12 +4,15 @@ import math
 import sys
 import time
 import os
+
+import httpx
+
 import app_logger
 from datetime import datetime
 import pandas as pd
 from clickhouse_connect import get_client
 from clickhouse_connect.driver import Client
-
+import yaml
 
 logger: app_logger = app_logger.get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
 
@@ -18,23 +21,38 @@ PARAMETRS = ['LIDER LINE']
 
 class Morservice():
 
-    def __init__(self):...
-        # self.client = self.connect_db()
+    def __init__(self):
+        ...
+    # self.client = self.connect_db()
+
+
+
+
 
     def connect_db(self):
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='http://10.23.4.203', database='default',
+            client: Client = get_client(host='10.23.4.203', database='default',
                                         username="default", password="6QVnYsC4iSzz")
-        except Exception as ex:
-            logger.info(f'Wrong connection {ex}')
+        except httpx.ConnectError as ex_connect:
+            logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
         return client
 
-    def get_discrepancies_in_db_positive(self,ref = False):
+    def open_config(self):
+        with open("config.yaml", 'r') as stream:
+            data_loaded = yaml.safe_load(stream)
+            month = data_loaded['month']
+            year = data_loaded['year']
+            is_ref = data_loaded['is_ref']
+            return month, year, is_ref
+
+    def get_discrepancies_in_db_positive(self, ref=False):
         logger.info('Получение delta_count из представления not_coincidences_by_params')
         client = self.connect_db()
-        result = client.query("Select * from not_coincidences_by_params where delta_count > 0")
+        month, year, _ = self.open_config()
+        result = client.query(
+            f"Select * from not_coincidences_by_params where delta_count > 0 and month = '{month}' and year = '{year}'")
         data = result.result_rows
 
         # Получаем список имен столбцов
@@ -84,7 +102,7 @@ class Morservice():
         }
         return data
 
-    def add_container(self, data, count,flag):
+    def add_container(self, data, count, flag):
         if flag:
             data['container_type'] = 'HC'
             data['container_size'] = 40
@@ -92,7 +110,6 @@ class Morservice():
             data['container_type'] = 'DC'
             data['container_size'] = 20
         data['count_container'] = count
-
 
     def add_columns(self, data_di, percent40):
         logger.info('Заполнение данных по контейнерам между 40фт и 20 фт в процентном соотношение')
@@ -102,21 +119,22 @@ class Morservice():
             return None
         feet_40 = round((delta_count * percent40) / 100)
         feet_20 = delta_count - feet_40
-        #Распределение данных по контейнерам 40 футовым
+        # Распределение данных по контейнерам 40 футовым
         data = self.get_data(data_di)
-        self.add_container(data,feet_40, True)
+        self.add_container(data, feet_40, True)
         data_result.append(data)
-        #Распределение данных по контейнерам 20 футовым
+        # Распределение данных по контейнерам 20 футовым
         data = self.get_data(data_di)
-        self.add_container(data, feet_20,False)
+        self.add_container(data, feet_20, False)
         data_result.append(data)
         return data_result
 
     def get_delta_teu(self):
         logger.info('Получение значения в delta_teo из nle_cross')
+        month, year, is_ref = self.open_config()
         client = self.connect_db()
         result = client.query(
-            "SELECT teu_delta FROM nle_cross nc where `month` = 5 and `year` = 2023 and direction = 'import' and is_ref = False and is_empty = 0")
+            f"SELECT teu_delta FROM nle_cross nc where `month` = {month} and `year` = {year} and direction = 'import' and is_ref = {is_ref} and is_empty = 0")
         delta_teu = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu
 
@@ -124,14 +142,15 @@ class Morservice():
         client = self.connect_db()
         values = []
         for data in data_result:
-            line = data['line']
-            ship = data['ship']
-            terminal = data['terminal']
-            date = data['date']
-            type_co = data['container_type']
-            size = data['container_size']
-            count = data['count_container']
-            values.append(f"('{line}', '{ship}', '{terminal}', '{date}', '{type_co}', {size}, {count}, Null, Null, Null)")
+            line = 'null' if data.get('line') is None else data.get('line')
+            ship = 'null' if data.get('ship') is None else data.get('ship')
+            terminal = 'null' if data.get('terminal') is None else data.get('terminal')
+            date = 'null' if data.get('date') is None else data.get('date')
+            type_co = 'null' if data.get('container_type') is None else data.get('container_type')
+            size = 'null' if data.get('container_size') is None else data.get('container_size')
+            count = 'null' if data.get('count_container') is None else data.get('count_container')
+            values.append(
+                f"('{line}', '{ship}', '{terminal}', '{date}', '{type_co}', {size}, {count}, Null, Null, Null)")
 
         query = "INSERT INTO default.test_table (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
         query += ', '.join(values)
@@ -149,7 +168,7 @@ class Morservice():
             f"ALTER TABLE default.reference_spardeck UPDATE  total_volume_in = {value} where vessel = '{vessel}' and operator = '{operator}' and atb_moor_pier = '{atb_moor_pier}'")
 
     @staticmethod
-    def change_20(data_result,different):
+    def change_20(data_result, different):
         '''Изменение 20 футового на 40 футовый контейнер'''
         index = data_result.index(max(data_result, key=len))
         data_result[index][-1]['count_container'] += abs(different)
@@ -157,15 +176,12 @@ class Morservice():
         return data_result
 
     @staticmethod
-    def change_40(data_result,different):
+    def change_40(data_result, different):
         '''Изменение 40 футового на 20 футовый '''
         index = data_result.index(max(data_result, key=len))
         data_result[index][0]['count_container'] += abs(different)
         data_result[index][-1]['count_container'] -= abs(different)
         return data_result
-
-
-
 
     def sum_delta_count(self, data):
         '''Подсчёт полученной суммы delta_teo'''
@@ -181,20 +197,18 @@ class Morservice():
     def check_delta_teu(self, data_result, delta_teo):
         '''Сверка delta_teu с заполненным результатом и приравнивание к 0'''
         summa_result = self.sum_delta_count(data_result)
-        different = int(delta_teo) -  summa_result
+        different = int(delta_teo) - summa_result
         if summa_result != int(delta_teo):
             if delta_teo > summa_result:
-                data_result = self.change_20(data_result,different)
+                data_result = self.change_20(data_result, different)
                 if self.sum_delta_count(data_result) == delta_teo:
                     return data_result
             elif delta_teo < summa_result:
-                data_result = self.change_40(data_result,different)
+                data_result = self.change_40(data_result, different)
                 if self.sum_delta_count(data_result) == delta_teo:
                     return data_result
         else:
             return data_result
-
-
 
     def work_to_data(self):
         '''Основная функция для работы с данными'''
@@ -219,10 +233,6 @@ class Morservice():
             # delta_negative = self.get_discrepancies_in_db_negative()
             # for index,d in delta_negative.iterrows():
             #     self.del_negative_container(d)
-
-
-
-
 
 
 if __name__ == '__main__':
