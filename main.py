@@ -18,8 +18,8 @@ PARAMETRS = ['LIDER LINE']
 
 class Morservice():
 
-    def __init__(self):
-        self.client = self.connect_db()
+    def __init__(self):...
+        # self.client = self.connect_db()
 
     def connect_db(self):
         try:
@@ -33,7 +33,8 @@ class Morservice():
 
     def get_discrepancies_in_db_positive(self,ref = False):
         logger.info('Получение delta_count из представления not_coincidences_by_params')
-        result = self.client.query("Select * from not_coincidences_by_params where delta_count > 0")
+        client = self.connect_db()
+        result = client.query("Select * from not_coincidences_by_params where delta_count > 0")
         data = result.result_rows
 
         # Получаем список имен столбцов
@@ -53,7 +54,8 @@ class Morservice():
 
     def get_discrepancies_in_db_negative(self):
         '''Получение данных из discrepancies_found_containers которые меньше 0'''
-        result = self.client.query("Select * from discrepancies_found_containers where delta_count < 0")
+        client = self.connect_db()
+        result = client.query("Select * from discrepancies_found_containers where delta_count < 0")
 
         data = result.result_rows
 
@@ -112,12 +114,14 @@ class Morservice():
 
     def get_delta_teu(self):
         logger.info('Получение значения в delta_teo из nle_cross')
-        result = self.client.query(
+        client = self.connect_db()
+        result = client.query(
             "SELECT teu_delta FROM nle_cross nc where `month` = 5 and `year` = 2023 and direction = 'import' and is_ref = False and is_empty = 0")
         delta_teu = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu
 
     def write_to_table(self, data_result):
+        client = self.connect_db()
         values = []
         for data in data_result:
             line = data['line']
@@ -131,7 +135,7 @@ class Morservice():
 
         query = "INSERT INTO default.test_table (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
         query += ', '.join(values)
-        self.client.query(query)
+        client.query(query)
 
     def del_negative_container(self, data):
         '''Заполнение данных в таблицу с негативными значениями'''
