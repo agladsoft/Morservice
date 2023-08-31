@@ -6,7 +6,7 @@ _dateftm: str = "%d/%B/%Y %H:%M:%S"
 
 
 def get_file_handler(name: str) -> logging.FileHandler:
-    log_dir_name: str = "/home/uventus/PycharmProjects/MoRservice/logging"
+    log_dir_name: str = "/home/uventus/PycharmProjects/Morservice/logging"
     if not os.path.exists(log_dir_name):
         os.mkdir(log_dir_name)
     file_handler: logging.FileHandler = logging.FileHandler(f"{log_dir_name}/{name}.log")
