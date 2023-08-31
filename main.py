@@ -24,7 +24,7 @@ class Morservice():
     def connect_db(self):
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='http//:10.23.4.203', database='default',
+            client: Client = get_client(host='http://10.23.4.203', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except Exception as ex:
             logger.info(f'Wrong connection {ex}')
