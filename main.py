@@ -24,7 +24,7 @@ class Morservice():
     def connect_db(self):
         try:
             client: Client = get_client(host='10.23.4.203', database='default',
-                                        username="default", password="6QVnYsC4iSzz")
+                                        username="default", password="6QVnYsC4iSzz",connect_timeout = 5)
         except Exception as ex:
             logger.info(f'Wrong connection {ex}')
             sys.exit(1)
