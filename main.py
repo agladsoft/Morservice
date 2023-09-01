@@ -139,13 +139,13 @@ class Morservice:
         client = self.connect_db()
         values = []
         for data in data_result:
-            line = 'null' if data.get('line') is None else data.get('line')
-            ship = 'null' if data.get('ship') is None else data.get('ship')
-            terminal = 'null' if data.get('terminal') is None else data.get('terminal')
-            date = 'null' if data.get('date') is None else data.get('date')
-            type_co = 'null' if data.get('container_type') is None else data.get('container_type')
-            size = 'null' if data.get('container_size') is None else data.get('container_size')
-            count = 'null' if data.get('count_container') is None else data.get('count_container')
+            line = data.get('line')
+            ship = data.get('ship')
+            terminal = data.get('terminal')
+            date = data.get('date')
+            type_co = data.get('container_type')
+            size = data.get('container_size')
+            count = data.get('count_container')
             values.append(
                 f"('{line}', '{ship}', '{terminal}', '{date}', '{type_co}', {size}, {count}, Null, Null, Null)")
 
