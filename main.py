@@ -35,12 +35,14 @@ class Morservice:
         return client
 
     def open_config(self):
-        with open(f"{os.environ.get('XL_IDP_PATH_MORSERVICE')}/config.yaml", 'r') as stream:
-            data_loaded = yaml.safe_load(stream)
-            month = data_loaded['month']
-            year = data_loaded['year']
-            is_ref = data_loaded['is_ref']
-            return month, year, is_ref
+        client = self.connect_db()
+        result = client.query(
+            f"Select * from check_month")
+        data_loaded = result.result_rows
+        month = data_loaded[0][0]
+        year = data_loaded[0][1]
+        is_ref = data_loaded[0][2]
+        return month, year, is_ref
 
     def get_discrepancies_in_db_positive(self, ref=False):
         logger.info('Получение delta_count из представления not_coincidences_by_params')
