@@ -4,9 +4,7 @@ import math
 import sys
 import time
 import os
-
 import httpx
-
 import app_logger
 from datetime import datetime
 import pandas as pd
