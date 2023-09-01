@@ -32,7 +32,7 @@ class Morservice():
     def connect_db(self):
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='10.23.4.203', database='default',
+            client: Client = get_client(host='clickhouse', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
