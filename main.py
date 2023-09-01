@@ -19,15 +19,12 @@ logger: app_logger = app_logger.get_logger(os.path.basename(__file__).replace(".
 PARAMETRS = ['LIDER LINE']
 
 
-class Morservice():
+class Morservice:
 
     def __init__(self):
-        ...
+        pass
+
     # self.client = self.connect_db()
-
-
-
-
 
     def connect_db(self):
         try:
