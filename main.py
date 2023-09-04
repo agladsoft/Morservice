@@ -131,7 +131,7 @@ class Morservice:
         month, year, is_ref = self.open_config()
         client = self.connect_db()
         result = client.query(
-            f"SELECT teu_delta FROM nle_cross nc where `month` = {month} and `year` = {year} and direction = 'import' and is_ref = {is_ref} and is_empty = 0")
+            f"SELECT teu_delta FROM nle_cross where `month` = {month} and `year` = {year} and direction = 'import' and is_ref = {is_ref} and is_empty = 0")
         delta_teu = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu
 
