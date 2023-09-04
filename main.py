@@ -149,7 +149,7 @@ class Morservice:
             values.append(
                 f"('{line}', '{ship}', '{terminal}', '{date}', '{type_co}', {size}, {count}, Null, Null, Null)")
 
-        query = "INSERT INTO default.test_table (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
+        query = "INSERT INTO default.extrapolate (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
         query += ', '.join(values)
         client.query(query)
 
