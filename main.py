@@ -39,9 +39,9 @@ class Morservice:
         result = client.query(
             f"Select * from check_month")
         data_loaded = result.result_rows
-        month = data_loaded[0][0]
-        year = data_loaded[0][1]
-        is_ref = data_loaded[0][2]
+        month = data_loaded[0][1]
+        year = data_loaded[0][2]
+        is_ref = data_loaded[0][3]
         return month, year, is_ref
 
     def get_discrepancies_in_db_positive(self, ref=False):
