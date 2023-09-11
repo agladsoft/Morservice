@@ -20,9 +20,12 @@ PARAMETRS = ['LIDER LINE']
 class Morservice:
 
     def __init__(self):
-        pass
+        self.client = self.connect_db()
+        self.month, self.year, self.is_ref ,self.start= self.get_month_year()
+        self.delta_teu = self.get_delta_teu()
+        self.data_no_count, self.data_no = self.get_not_coincidences_in_db_positive()
+        self.data_di_count, self.data_di = self.get_discrepancies_in_db_positive()
 
-    # self.client = self.connect_db()
 
     def connect_db(self):
         try:
@@ -34,22 +37,36 @@ class Morservice:
             sys.exit(1)
         return client
 
-    def open_config(self):
-        client = self.connect_db()
-        result = client.query(
+    def get_month_year(self):
+        result = self.client.query(
             f"Select * from check_month")
         data_loaded = result.result_rows
         month = data_loaded[0][1]
         year = data_loaded[0][2]
         is_ref = data_loaded[0][3]
-        return month, year, is_ref
+        start = data_loaded[0][4]
+
+        return month, year, is_ref, start
+
+    def get_not_coincidences_in_db_positive(self, ref=False):
+        logger.info('Получение delta_count из представления not_coincidences_by_params')
+        result = self.client.query(
+            f"Select * from not_coincidences_by_params where delta_count > 0 and month = '{self.month}' and year = '{self.year}'")
+        data = result.result_rows
+
+        # Получаем список имен столбцов
+        column_names = result.column_names
+
+        # Преобразуем результат в DataFrame
+        df = pd.DataFrame(data, columns=column_names)
+        if not ref:
+            df = self.sort_params(df)
+        return sum(df['delta_count'].to_list()), df
 
     def get_discrepancies_in_db_positive(self, ref=False):
         logger.info('Получение delta_count из представления not_coincidences_by_params')
-        client = self.connect_db()
-        month, year, _ = self.open_config()
-        result = client.query(
-            f"Select * from not_coincidences_by_params where delta_count > 0 and month = '{month}' and year = '{year}'")
+        result = self.client.query(
+            f"Select * from discrepancies_found_containers where delta_count > 0 and month = '{self.month}' and year = '{self.year}'")
         data = result.result_rows
 
         # Получаем список имен столбцов
@@ -69,8 +86,7 @@ class Morservice:
 
     def get_discrepancies_in_db_negative(self):
         '''Получение данных из discrepancies_found_containers которые меньше 0'''
-        client = self.connect_db()
-        result = client.query("Select * from discrepancies_found_containers where delta_count < 0")
+        result = self.client.query("Select * from discrepancies_found_containers where delta_count < 0")
 
         data = result.result_rows
 
@@ -82,12 +98,14 @@ class Morservice:
 
         return df
 
-    def filling_percentage(self, delta_count, delta_teu):
+    def not_percentage(self):
         logger.info('Получение процентного соотношения 40 футовых и 20 футовых контейнеров')
-        percent40 = delta_teu / delta_count
-        if percent40 > 2:
-            return
-        percent40 = (percent40 - 1) * 100
+        percent40 = ((self.delta_teu / self.data_no_count) - 1) * 100
+        return percent40
+
+    def not_dis_percentage(self):
+        sum_delta_count = sum([self.data_no_count, self.data_di_count])
+        percent40 = ((self.delta_teu / sum_delta_count) - 1) * 100
         return percent40
 
     def get_data(self, data_di):
@@ -107,6 +125,23 @@ class Morservice:
             data['container_type'] = 'DC'
             data['container_size'] = 20
         data['count_container'] = count
+
+    def add_columns_no(self, data, percent, count):
+        logger.info('Заполнение данных по контейнерам между 40фт и 20 фт в процентном соотношение')
+        data_result = []
+        if count <= 0:
+            return None
+        feet_40 = round((count * percent) / 100)
+        feet_20 = count - feet_40
+        # Распределение данных по контейнерам 40 футовым
+        data = self.get_data(data)
+        self.add_container(data, feet_40, True)
+        data_result.append(data)
+        # Распределение данных по контейнерам 20 футовым
+        data = self.get_data(data)
+        self.add_container(data, feet_20, False)
+        data_result.append(data)
+        return data_result
 
     def add_columns(self, data_di, percent40):
         logger.info('Заполнение данных по контейнерам между 40фт и 20 фт в процентном соотношение')
@@ -128,19 +163,16 @@ class Morservice:
 
     def get_delta_teu(self):
         logger.info('Получение значения в delta_teo из nle_cross')
-        month, year, is_ref = self.open_config()
-        client = self.connect_db()
-        result = client.query(
-            f"SELECT teu_delta FROM nle_cross where `month` = {month} and `year` = {year} and direction = 'import' and is_ref = {is_ref} and is_empty = 0")
+        result = self.client.query(
+            f"SELECT teu_delta FROM nle_cross where `month` = {self.month} and `year` = {self.year} and direction = 'import' and is_ref = {self.is_ref} and is_empty = 0")
         delta_teu = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu
 
     def write_to_table(self, data_result):
-        client = self.connect_db()
         values = []
         for data in data_result:
             line = data.get('line')
-            ship = data.get('ship')
+            ship = data.get('ship','null')
             terminal = data.get('terminal')
             date = data.get('date')
             type_co = data.get('container_type')
@@ -148,10 +180,9 @@ class Morservice:
             count = data.get('count_container')
             values.append(
                 f"('{line}', '{ship}', '{terminal}', '{date}', '{type_co}', {size}, {count}, Null, Null, Null)")
-
         query = "INSERT INTO default.extrapolate (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
         query += ', '.join(values)
-        client.query(query)
+        self.client.query(query)
 
     def del_negative_container(self, data):
         '''Заполнение данных в таблицу с негативными значениями'''
@@ -191,45 +222,130 @@ class Morservice:
                     summa += 1 * i['count_container']
         return summa
 
-    def check_delta_teu(self, data_result, delta_teo):
+    def distribution_teu(self,flag):
+        if flag == 'dis':
+            for index, row in self.data_di.iterrows():
+                percent = round((row['delta_count'] / self.data_di_count) * 100)
+                self.data_di.loc[index, 'percent'] = percent
+        elif flag == 'not':
+            for index, row in self.data_no.iterrows():
+                percent = round((row['delta_count'] / self.data_no_count) * 100)
+                self.data_no.loc[index, 'percent'] = percent
+
+    def filling_in_data_no_dis(self, flag):
+        data_list = []
+        if flag == 'not':
+            count_container_40 = (self.delta_teu // 2) // 2
+            count_container_20 = count_container_40 * 2
+            for index, row in self.data_no.iterrows():
+                lst = []
+                data = self.get_data(row)
+                feet_40 = round((count_container_40 * row['percent']) / 100)
+                self.add_container(data, feet_40, True)
+                lst.append(data)
+                data = self.get_data(row)
+                feet_20 = round((count_container_20 * row['percent']) / 100)
+                self.add_container(data, feet_20, False)
+                lst.append(data)
+                data_list.append(lst)
+        elif flag == 'dis':
+            count_container_40 = (self.delta_teu // 2) // 2
+            count_container_20 = count_container_40 * 2
+            for index, row in self.data_di.iterrows():
+                lst = []
+                data = self.get_data(row)
+                feet_40 = round((count_container_40 * row['percent']) / 100)
+                self.add_container(data, feet_40, True)
+                lst.append(data)
+                data = self.get_data(row)
+                feet_20 = round((count_container_20 * row['percent']) / 100)
+                self.add_container(data, feet_20, False)
+                lst.append(data)
+                data_list.append(lst)
+        return data_list
+
+
+    def filling_in_data(self, percent, df):
+        logger.info('Заполнение данных в таблицу')
+        data_list = []
+        for index, d in df.iterrows():
+            data_result = self.add_columns(d, percent)
+            if data_result is None:
+                continue
+            data_list.append(data_result)
+        return data_list
+
+    def check_delta_teu(self, data_result):
         '''Сверка delta_teu с заполненным результатом и приравнивание к 0'''
         summa_result = self.sum_delta_count(data_result)
-        different = int(delta_teo) - summa_result
-        if summa_result != int(delta_teo):
-            if delta_teo > summa_result:
+        different = int(self.delta_teu) - summa_result
+        if summa_result != int(self.delta_teu):
+            if self.delta_teu > summa_result:
                 data_result = self.change_20(data_result, different)
-                if self.sum_delta_count(data_result) == delta_teo:
+                if self.sum_delta_count(data_result) == self.delta_teu:
                     return data_result
-            elif delta_teo < summa_result:
+            elif self.delta_teu < summa_result:
                 data_result = self.change_40(data_result, different)
-                if self.sum_delta_count(data_result) == delta_teo:
+                if self.sum_delta_count(data_result) == self.delta_teu:
                     return data_result
         else:
             return data_result
 
+
+    def write_result(self, data_list):
+        for data in data_list:
+            self.write_to_table(data)
+
     def work_to_data(self):
         '''Основная функция для работы с данными'''
         logger.info('Start working')
-        delta_teu = self.get_delta_teu()
-        if delta_teu > 0:
-            delta_count, data_di = self.get_discrepancies_in_db_positive()
-            percent40 = self.filling_percentage(delta_count, delta_teu)
-            if percent40 is None:
-                logger.info('Не достаточно контейнеров для покрытия delta_teo')
-                return
-            logger.info('Заполнение данных в таблицу')
-            data_list = []
-            for index, d in data_di.iterrows():
-                data_result = self.add_columns(d, percent40)
-                if data_result is None:
-                    continue
-                data_list.append(data_result)
-            self.check_delta_teu(data_list, delta_teu)
-            for data in data_list:
-                self.write_to_table(data)
-            # delta_negative = self.get_discrepancies_in_db_negative()
-            # for index,d in delta_negative.iterrows():
-            #     self.del_negative_container(d)
+        if self.start:
+            if self.delta_teu > 0:
+                percent40_not = self.not_percentage()
+                # Если суммы по линии not достаточно для покрытия 55/45 delta-teu закрываем только данной выборкой
+                if 45 <= percent40_not <= 55:
+                    '''Заполняем данные по линиям согласно данного процентного соотношения только по not'''
+                    data_result = self.filling_in_data(percent40_not, self.data_no)
+                    self.check_delta_teu(data_result)
+                    self.write_result(data_result)
+
+                elif percent40_not <= 0:
+                    self.distribution_teu('not')
+                    # Распределить согласнно данного teu количевсто контейнеров
+                    data_result = self.filling_in_data_no_dis('not')
+                    self.check_delta_teu(data_result)
+                    self.write_result(data_result)
+
+                elif percent40_not > 0:
+                    percent40_not_dis = self.not_dis_percentage()
+                    if percent40_not_dis < 0:
+                        data_result_no = self.filling_in_data(50,self.data_no)
+                        self.delta_teu -= self.get_sum_delta_teu(data_result_no)
+                        self.distribution_teu('dis')
+                        data_result_dis = self.filling_in_data_no_dis('dis')
+                        self.check_delta_teu(data_result_dis)
+                        data_result = data_result_no + data_result_dis
+                        self.write_result(data_result)
+                    elif 100 >= percent40_not_dis > 0:
+                        union_df = pd.concat([self.data_no,self.data_di])
+                        data_result = self.filling_in_data(percent40_not_dis,union_df)
+                        self.check_delta_teu(data_result)
+                        self.write_result(data_result)
+                    elif percent40_not_dis > 100:
+                        union_df = pd.concat([self.data_no, self.data_di])
+                        data_result = self.filling_in_data(50, union_df)
+                        # self.check_delta_teu(data_result)
+                        self.write_result(data_result)
+
+
+
+    def get_sum_delta_teu(self, data_result):
+        delta_teu = 0
+        for data in data_result:
+            delta_teu += data[0]['count_container'] * 2
+            delta_teu += data[1]['count_container']
+        return delta_teu
+
 
 
 if __name__ == '__main__':
