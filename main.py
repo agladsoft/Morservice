@@ -25,7 +25,6 @@ class Morservice:
         self.delta_teu = self.get_delta_teu()
         self.data_no_count, self.data_no = self.get_not_coincidences_in_db_positive()
         self.data_di_count, self.data_di = self.get_discrepancies_in_db_positive()
-        self.start = True
 
     def connect_db(self):
         try:
