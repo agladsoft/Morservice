@@ -21,11 +21,11 @@ class Morservice:
 
     def __init__(self):
         self.client = self.connect_db()
-        self.month, self.year, self.is_ref ,self.start= self.get_month_year()
+        self.month, self.year, self.is_ref, self.start = self.get_month_year()
         self.delta_teu = self.get_delta_teu()
         self.data_no_count, self.data_no = self.get_not_coincidences_in_db_positive()
         self.data_di_count, self.data_di = self.get_discrepancies_in_db_positive()
-
+        self.start = True
 
     def connect_db(self):
         try:
@@ -172,17 +172,20 @@ class Morservice:
         values = []
         for data in data_result:
             line = data.get('line')
-            ship = data.get('ship','null')
+            ship = data.get('ship')
             terminal = data.get('terminal')
             date = data.get('date')
             type_co = data.get('container_type')
             size = data.get('container_size')
             count = data.get('count_container')
             values.append(
-                f"('{line}', '{ship}', '{terminal}', '{date}', '{type_co}', {size}, {count}, Null, Null, Null)")
-        query = "INSERT INTO default.extrapolate (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
-        query += ', '.join(values)
-        self.client.query(query)
+                [line, ship, terminal, date, type_co, size, count, None, None, None])
+        # query = "INSERT INTO default.extrapolate (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
+        # query += ', '.join(values)
+        self.client.insert('extrapolate', values,
+                           column_names=['line', 'ship', 'terminal', 'date', 'container_type', 'container_size',
+                                         'count_container','goods_name','tracking_country','tracking_seaport'])
+        # self.client.query(query)
 
     def del_negative_container(self, data):
         '''Заполнение данных в таблицу с негативными значениями'''
@@ -222,7 +225,7 @@ class Morservice:
                     summa += 1 * i['count_container']
         return summa
 
-    def distribution_teu(self,flag):
+    def distribution_teu(self, flag):
         if flag == 'dis':
             for index, row in self.data_di.iterrows():
                 percent = round((row['delta_count'] / self.data_di_count) * 100)
@@ -264,7 +267,6 @@ class Morservice:
                 data_list.append(lst)
         return data_list
 
-
     def filling_in_data(self, percent, df):
         logger.info('Заполнение данных в таблицу')
         data_list = []
@@ -290,7 +292,6 @@ class Morservice:
                     return data_result
         else:
             return data_result
-
 
     def write_result(self, data_list):
         for data in data_list:
@@ -319,7 +320,7 @@ class Morservice:
                 elif percent40_not > 0:
                     percent40_not_dis = self.not_dis_percentage()
                     if percent40_not_dis < 0:
-                        data_result_no = self.filling_in_data(50,self.data_no)
+                        data_result_no = self.filling_in_data(50, self.data_no)
                         self.delta_teu -= self.get_sum_delta_teu(data_result_no)
                         self.distribution_teu('dis')
                         data_result_dis = self.filling_in_data_no_dis('dis')
@@ -327,8 +328,8 @@ class Morservice:
                         data_result = data_result_no + data_result_dis
                         self.write_result(data_result)
                     elif 100 >= percent40_not_dis > 0:
-                        union_df = pd.concat([self.data_no,self.data_di])
-                        data_result = self.filling_in_data(percent40_not_dis,union_df)
+                        union_df = pd.concat([self.data_no, self.data_di])
+                        data_result = self.filling_in_data(percent40_not_dis, union_df)
                         self.check_delta_teu(data_result)
                         self.write_result(data_result)
                     elif percent40_not_dis > 100:
@@ -337,15 +338,12 @@ class Morservice:
                         # self.check_delta_teu(data_result)
                         self.write_result(data_result)
 
-
-
     def get_sum_delta_teu(self, data_result):
         delta_teu = 0
         for data in data_result:
             delta_teu += data[0]['count_container'] * 2
             delta_teu += data[1]['count_container']
         return delta_teu
-
 
 
 if __name__ == '__main__':
