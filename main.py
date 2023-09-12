@@ -177,11 +177,14 @@ class Morservice:
             type_co = data.get('container_type')
             size = data.get('container_size')
             count = data.get('count_container')
+            if count <= 0:
+                continue
             values.append(
                 [line, ship, terminal, date, type_co, size, count, None, None, None])
         # query = "INSERT INTO default.extrapolate (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
         # query += ', '.join(values)
-        self.client.insert('extrapolate', values,
+        if values:
+            self.client.insert('extrapolate', values,
                            column_names=['line', 'ship', 'terminal', 'date', 'container_type', 'container_size',
                                          'count_container','goods_name','tracking_country','tracking_seaport'])
         # self.client.query(query)
