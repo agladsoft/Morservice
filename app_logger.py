@@ -21,3 +21,4 @@ def get_logger(name: str) -> logging.getLogger:
     logger.addHandler(get_file_handler(name))
     logger.setLevel(logging.INFO)
     return logger
+
