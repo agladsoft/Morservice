@@ -23,7 +23,7 @@ class REF(Morservice):
     def work_to_ref(self):
         delta_teu = self.get_delta_teu_ref()
         if delta_teu > 0:
-            delta_count, data_di = self.get_discrepancies_in_db_positive(True)
+            delta_count, data_di = self.get_not_coincidences_in_db_positive(True)
             logger.info('Заполнение данных в таблицу')
             data_list = []
             for index, d in data_di.iterrows():
