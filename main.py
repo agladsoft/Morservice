@@ -349,6 +349,7 @@ class Morservice:
 
 
 if __name__ == '__main__':
+
     Morservice().work_to_data()
 
 # compare_values()
