@@ -295,6 +295,14 @@ class Morservice:
         else:
             return data_result
 
+    def check_enough_teu(self):
+        feet_40 = (self.delta_teu // 2) // 2
+        feet_20 = feet_40 * 2
+        sum_ft = feet_20 + feet_40
+        if sum_ft >= self.data_no_count:
+            return True
+        return False
+
     def write_result(self, data_list):
         for data in data_list:
             self.write_to_table(data)
@@ -320,8 +328,8 @@ class Morservice:
                     self.write_result(data_result)
 
                 elif percent40_not > 0:
-                    percent40_not_dis = self.not_dis_percentage()
-                    if percent40_not_dis < 0:
+                    #1 вариант если заполним первую таблицу 50 на 50 нам хватает teu для работы со второй таблицей
+                    if self.check_enough_teu():
                         data_result_no = self.filling_in_data(50, self.data_no)
                         self.delta_teu -= self.get_sum_delta_teu(data_result_no)
                         self.distribution_teu('dis')
@@ -329,16 +337,15 @@ class Morservice:
                         self.check_delta_teu(data_result_dis)
                         data_result = data_result_no + data_result_dis
                         self.write_result(data_result)
-                    elif 100 >= percent40_not_dis > 0:
-                        union_df = pd.concat([self.data_no, self.data_di])
-                        data_result = self.filling_in_data(percent40_not_dis, union_df)
+                        # Заполняем нот и переходим ко второй таблице для заполнения
+                    # 2 вариант усли заполним первую таблицу 50 на 50 нам не хватает teu или оно уходит в минус
+                    else:
+                        # Заполняем первую таблицу максимально приблежонно 50 на 50 если все данные уходят для заполнения первой значит ко второй не переходим
+                        data_result = self.filling_in_data(percent40_not, self.data_no)
                         self.check_delta_teu(data_result)
                         self.write_result(data_result)
-                    elif percent40_not_dis > 100:
-                        union_df = pd.concat([self.data_no, self.data_di])
-                        data_result = self.filling_in_data(50, union_df)
-                        # self.check_delta_teu(data_result)
-                        self.write_result(data_result)
+
+
 
     def get_sum_delta_teu(self, data_result):
         delta_teu = 0
@@ -346,6 +353,8 @@ class Morservice:
             delta_teu += data[0]['count_container'] * 2
             delta_teu += data[1]['count_container']
         return delta_teu
+
+
 
 
 if __name__ == '__main__':
