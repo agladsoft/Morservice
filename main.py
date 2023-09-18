@@ -22,8 +22,8 @@ class Morservice:
     def __init__(self):
         self.client = self.connect_db()
         self.month, self.year, self.is_ref, self.start = self.get_month_year()
-        if self.start:
-            self.delta_teu = self.get_delta_teu()
+        self.delta_teu = self.get_delta_teu()
+        if self.start and self.delta_teu > 0:
             self.data_no_count, self.data_no = self.get_not_coincidences_in_db_positive()
             self.data_di_count, self.data_di = self.get_discrepancies_in_db_positive()
 
