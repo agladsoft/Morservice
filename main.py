@@ -18,6 +18,31 @@ PARAMETRS = ['LIDER LINE']
 
 
 class Morservice:
+    """Класс для заполнения экстраполированных данных по линиям и судну которые не относятся к рефрижераторам
+    Методы:
+        connect_db
+        get_month_year
+        get_not_coincidences_in_db_positive
+        get_discrepancies_in_db_positive
+        get_discrepancies_in_db_positive
+        sort_params
+        get_discrepancies_in_db_negative
+        get_discrepancies_in_db_negative
+        not_percentage
+        not_dis_percentage
+        get_data
+        add_container
+        add_columns_no
+        get_delta_teu
+        add_columns
+        get_delta_teu
+        write_to_table
+        del_negative_container
+        change_20
+        change_40
+        get_index
+        sum_delta_count
+    """
 
     def __init__(self):
         self.client = self.connect_db()
@@ -59,8 +84,10 @@ class Morservice:
 
         # Преобразуем результат в DataFrame
         df = pd.DataFrame(data, columns=column_names)
-        if not ref:
+        if not ref and not df.empty:
             df = self.sort_params(df)
+        if df.empty:
+            return 0, df
         return sum(df['delta_count'].to_list()), df
 
     def get_discrepancies_in_db_positive(self, ref=False):
@@ -74,12 +101,13 @@ class Morservice:
 
         # Преобразуем результат в DataFrame
         df = pd.DataFrame(data, columns=column_names)
-        if not ref:
+        if not ref and not df.empty:
             df = self.sort_params(df)
+        if df.empty:
+            return 0, df
         return sum(df['delta_count'].to_list()), df
 
     def sort_params(self, df):
-
         df['operator'] = df['operator'].str.upper().str.strip()
         filter_df = df.loc[~df['operator'].isin(PARAMETRS)]
         return filter_df
@@ -113,9 +141,16 @@ class Morservice:
             'line': data_di['operator'],
             'ship': data_di['ship_name_unified'],
             'terminal': 'НЛЭ',
-            'date': data_di['atb_moor_pier']
+            'date': self.get_date(data_di)
         }
         return data
+
+    def get_date(self,data_di):
+        if 'shipment_date' not in data_di:
+            return data_di.get('atb_moor_pier')
+        return data_di.get('atb_moor_pier') if data_di.get('shipment_date') is None else data_di.get('shipment_date')
+
+
 
     def add_container(self, data, count, flag):
         if flag:
@@ -186,8 +221,8 @@ class Morservice:
         # query += ', '.join(values)
         if values:
             self.client.insert('extrapolate', values,
-                           column_names=['line', 'ship', 'terminal', 'date', 'container_type', 'container_size',
-                                         'count_container','goods_name','tracking_country','tracking_seaport'])
+                               column_names=['line', 'ship', 'terminal', 'date', 'container_type', 'container_size',
+                                             'count_container', 'goods_name', 'tracking_country', 'tracking_seaport'])
         # self.client.query(query)
 
     def del_negative_container(self, data):
@@ -201,21 +236,31 @@ class Morservice:
         self.client.query(
             f"ALTER TABLE default.reference_spardeck UPDATE  total_volume_in = {value} where vessel = '{vessel}' and operator = '{operator}' and atb_moor_pier = '{atb_moor_pier}'")
 
-    @staticmethod
-    def change_20(data_result, different):
+    def change_20(self,data_result, different):
         '''Изменение 20 футового на 40 футовый контейнер'''
-        index = data_result.index(max(data_result, key=len))
+        index = self.get_index(data_result)
         data_result[index][-1]['count_container'] += abs(different)
         data_result[index][0]['count_container'] -= abs(different)
         return data_result
 
-    @staticmethod
-    def change_40(data_result, different):
+
+    def change_40(self,data_result, different):
         '''Изменение 40 футового на 20 футовый '''
-        index = data_result.index(max(data_result, key=len))
+        index = self.get_index(data_result)
         data_result[index][0]['count_container'] += abs(different)
         data_result[index][-1]['count_container'] -= abs(different)
         return data_result
+
+    @staticmethod
+    def get_index(data_result):
+        max_index = None
+        max_value = 0
+        for index,value in enumerate(data_result):
+            for d in value:
+                if d.get('count_container',0) > max_value:
+                    max_index = index
+                    max_value = d.get('count_container')
+        return max_index
 
     def sum_delta_count(self, data):
         '''Подсчёт полученной суммы delta_teo'''
@@ -285,14 +330,17 @@ class Morservice:
         summa_result = self.sum_delta_count(data_result)
         different = int(self.delta_teu) - summa_result
         if summa_result != int(self.delta_teu):
-            if self.delta_teu > summa_result:
-                data_result = self.change_20(data_result, different)
-                if self.sum_delta_count(data_result) == self.delta_teu:
-                    return data_result
-            elif self.delta_teu < summa_result:
+            if different > 0:
                 data_result = self.change_40(data_result, different)
                 if self.sum_delta_count(data_result) == self.delta_teu:
                     return data_result
+            elif different < 0:
+                data_result = self.change_20(data_result, different)
+                if self.sum_delta_count(data_result) == self.delta_teu:
+                    return data_result
+                else:
+                    self.check_delta_teu(data_result)
+
         else:
             return data_result
 
@@ -312,7 +360,7 @@ class Morservice:
         '''Основная функция для работы с данными'''
         logger.info('Start working')
         if self.start:
-            if self.delta_teu > 0:
+            if self.delta_teu > 0 :
                 percent40_not = self.not_percentage()
                 # Если суммы по линии not достаточно для покрытия 55/45 delta-teu закрываем только данной выборкой
                 if 45 <= percent40_not <= 55:
@@ -329,15 +377,28 @@ class Morservice:
                     self.write_result(data_result)
 
                 elif percent40_not > 0:
-                    #1 вариант если заполним первую таблицу 50 на 50 нам хватает teu для работы со второй таблицей
+                    # 1 вариант если заполним первую таблицу 50 на 50 нам хватает teu для работы со второй таблицей
                     if self.check_enough_teu():
                         data_result_no = self.filling_in_data(50, self.data_no)
                         self.delta_teu -= self.get_sum_delta_teu(data_result_no)
-                        self.distribution_teu('dis')
-                        data_result_dis = self.filling_in_data_no_dis('dis')
-                        self.check_delta_teu(data_result_dis)
-                        data_result = data_result_no + data_result_dis
-                        self.write_result(data_result)
+                        percent40_dis = ((self.delta_teu / self.data_di_count) - 1) * 100
+                        if percent40_dis >= 100:
+                            data_result_dis = self.filling_in_data(100,self.data_di)
+                            # self.check_delta_teu(data_result_dis)
+                            data_result = data_result_no + data_result_dis
+                            self.write_result(data_result)
+                        elif percent40_dis > 0:
+                            # self.distribution_teu('dis')
+                            data_result_dis = self.filling_in_data(percent40_dis,self.data_di)
+                            self.check_delta_teu(data_result_dis)
+                            data_result = data_result_no + data_result_dis
+                            self.write_result(data_result)
+                        elif percent40_dis <= 0:
+                            self.distribution_teu('dis')
+                            data_result_dis = self.filling_in_data_no_dis('dis')
+                            self.check_delta_teu(data_result_dis)
+                            data_result = data_result_no + data_result_dis
+                            self.write_result(data_result)
                         # Заполняем нот и переходим ко второй таблице для заполнения
                     # 2 вариант усли заполним первую таблицу 50 на 50 нам не хватает teu или оно уходит в минус
                     else:
@@ -346,16 +407,12 @@ class Morservice:
                         self.check_delta_teu(data_result)
                         self.write_result(data_result)
 
-
-
     def get_sum_delta_teu(self, data_result):
         delta_teu = 0
         for data in data_result:
             delta_teu += data[0]['count_container'] * 2
             delta_teu += data[1]['count_container']
         return delta_teu
-
-
 
 
 if __name__ == '__main__':
