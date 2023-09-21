@@ -360,7 +360,7 @@ class Morservice:
         '''Основная функция для работы с данными'''
         logger.info('Start working')
         if self.start:
-            if self.delta_teu > 0 :
+            if self.delta_teu > 0 and not self.data_no.empty:
                 percent40_not = self.not_percentage()
                 # Если суммы по линии not достаточно для покрытия 55/45 delta-teu закрываем только данной выборкой
                 if 45 <= percent40_not <= 55:
