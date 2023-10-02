@@ -56,7 +56,7 @@ class Morservice:
         try:
             logger.info('Подключение к базе данных')
             client: Client = get_client(host='clickhouse', database='default',
-                                        username="default", password="6QVnYsC4iSzz")
+                                        username="admin", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
@@ -145,12 +145,10 @@ class Morservice:
         }
         return data
 
-    def get_date(self,data_di):
+    def get_date(self, data_di):
         if 'shipment_date' not in data_di:
             return data_di.get('atb_moor_pier')
         return data_di.get('atb_moor_pier') if data_di.get('shipment_date') is None else data_di.get('shipment_date')
-
-
 
     def add_container(self, data, count, flag):
         if flag:
@@ -208,6 +206,7 @@ class Morservice:
         for data in data_result:
             line = data.get('line')
             ship = data.get('ship')
+            direction = 'import'
             terminal = data.get('terminal')
             date = data.get('date')
             type_co = data.get('container_type')
@@ -216,12 +215,13 @@ class Morservice:
             if count <= 0:
                 continue
             values.append(
-                [line, ship, terminal, date, type_co, size, count, None, None, None])
+                [line, ship, direction, terminal, date, type_co, size, count, None, None, None])
         # query = "INSERT INTO default.extrapolate (line, ship, terminal, date, container_type, container_size, count_container, goods_name, tracking_country,tracking_seaport)VALUES"
         # query += ', '.join(values)
         if values:
             self.client.insert('extrapolate', values,
-                               column_names=['line', 'ship', 'terminal', 'date', 'container_type', 'container_size',
+                               column_names=['line', 'ship', 'direction', 'terminal', 'date', 'container_type',
+                                             'container_size',
                                              'count_container', 'goods_name', 'tracking_country', 'tracking_seaport'])
         # self.client.query(query)
 
@@ -236,15 +236,14 @@ class Morservice:
         self.client.query(
             f"ALTER TABLE default.reference_spardeck UPDATE  total_volume_in = {value} where vessel = '{vessel}' and operator = '{operator}' and atb_moor_pier = '{atb_moor_pier}'")
 
-    def change_20(self,data_result, different):
+    def change_20(self, data_result, different):
         '''Изменение 20 футового на 40 футовый контейнер'''
         index = self.get_index(data_result)
         data_result[index][-1]['count_container'] += abs(different)
         data_result[index][0]['count_container'] -= abs(different)
         return data_result
 
-
-    def change_40(self,data_result, different):
+    def change_40(self, data_result, different):
         '''Изменение 40 футового на 20 футовый '''
         index = self.get_index(data_result)
         data_result[index][0]['count_container'] += abs(different)
@@ -255,9 +254,9 @@ class Morservice:
     def get_index(data_result):
         max_index = None
         max_value = 0
-        for index,value in enumerate(data_result):
+        for index, value in enumerate(data_result):
             for d in value:
-                if d.get('count_container',0) > max_value:
+                if d.get('count_container', 0) > max_value:
                     max_index = index
                     max_value = d.get('count_container')
         return max_index
@@ -383,13 +382,13 @@ class Morservice:
                         self.delta_teu -= self.get_sum_delta_teu(data_result_no)
                         percent40_dis = ((self.delta_teu / self.data_di_count) - 1) * 100
                         if percent40_dis >= 100:
-                            data_result_dis = self.filling_in_data(100,self.data_di)
+                            data_result_dis = self.filling_in_data(100, self.data_di)
                             # self.check_delta_teu(data_result_dis)
                             data_result = data_result_no + data_result_dis
                             self.write_result(data_result)
                         elif percent40_dis > 0:
                             # self.distribution_teu('dis')
-                            data_result_dis = self.filling_in_data(percent40_dis,self.data_di)
+                            data_result_dis = self.filling_in_data(percent40_dis, self.data_di)
                             self.check_delta_teu(data_result_dis)
                             data_result = data_result_no + data_result_dis
                             self.write_result(data_result)
