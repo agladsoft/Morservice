@@ -25,7 +25,7 @@ class ClickHouse:
             sys.exit(1)
         return client
 
-    def get_month_year(self) -> tuple[int, int, str, bool, bool]:
+    def get_month_year(self) -> Optional[int, int, str, bool, bool]:
         result: QueryResult = self.client.query(
             f"Select * from check_month")
         data_loaded: list = result.result_rows
