@@ -65,11 +65,12 @@ class Morservice:
     def get_month_year(self):
         result = self.client.query(
             f"Select * from check_month")
-        data_loaded = result.result_rows
-        month = data_loaded[0][1]
-        year = data_loaded[0][2]
-        is_ref = data_loaded[0][3]
-        start = data_loaded[0][4]
+        data_loaded: list = result.result_rows
+        month: int = data_loaded[0][1]
+        year: int = data_loaded[0][2]
+        direction: str = data_loaded[0][3]
+        is_ref: bool = data_loaded[0][4]
+        start: bool = data_loaded[0][5]
 
         return month, year, is_ref, start
 
