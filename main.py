@@ -46,7 +46,7 @@ class Morservice:
 
     def __init__(self):
         self.client = self.connect_db()
-        self.month, self.year, self.is_ref, self.start = self.get_month_year()
+        self.month, self.year, self.direction, self.is_ref, self.start = self.get_month_year()
         self.delta_teu = self.get_delta_teu()
         if self.start and self.delta_teu > 0:
             self.data_no_count, self.data_no = self.get_not_coincidences_in_db_positive()
@@ -55,8 +55,8 @@ class Morservice:
     def connect_db(self):
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='clickhouse', database='default',
-                                        username="admin", password="6QVnYsC4iSzz")
+            client: Client = get_client(host='10.23.4.203', database='default',
+                                        username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
@@ -68,15 +68,16 @@ class Morservice:
         data_loaded = result.result_rows
         month = data_loaded[0][1]
         year = data_loaded[0][2]
-        is_ref = data_loaded[0][3]
-        start = data_loaded[0][4]
+        direction = data_loaded[0][3]
+        is_ref = data_loaded[0][4]
+        start = data_loaded[0][5]
 
-        return month, year, is_ref, start
+        return month, year, direction, is_ref, start
 
     def get_not_coincidences_in_db_positive(self, ref=False):
         logger.info('Получение delta_count из представления not_coincidences_by_params')
         result = self.client.query(
-            f"Select * from not_coincidences_by_params where delta_count > 0 and month = '{self.month}' and year = '{self.year}'")
+            f"Select * from not_found_containers where delta_count > 0 and month = '{self.month}' and year = '{self.year}' and direction = '{self.direction}'")
         data = result.result_rows
 
         # Получаем список имен столбцов
@@ -93,7 +94,7 @@ class Morservice:
     def get_discrepancies_in_db_positive(self, ref=False):
         logger.info('Получение delta_count из представления not_coincidences_by_params')
         result = self.client.query(
-            f"Select * from discrepancies_found_containers where delta_count > 0 and month = '{self.month}' and year = '{self.year}'")
+            f"Select * from discrepancies_found_containers where delta_count > 0 and month = '{self.month}' and year = '{self.year}' and direction = '{self.direction}'")
         data = result.result_rows
 
         # Получаем список имен столбцов
@@ -197,7 +198,7 @@ class Morservice:
     def get_delta_teu(self):
         logger.info('Получение значения в delta_teo из nle_cross')
         result = self.client.query(
-            f"SELECT teu_delta FROM nle_cross where `month` = {self.month} and `year` = {self.year} and direction = 'import' and is_ref = {self.is_ref} and is_empty = 0")
+            f"SELECT teu_delta FROM nle_cross where `month` = {self.month} and `year` = {self.year} and direction = '{self.direction}' and is_ref = {self.is_ref} and is_empty = 0")
         delta_teu = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu
 
@@ -206,7 +207,7 @@ class Morservice:
         for data in data_result:
             line = data.get('line')
             ship = data.get('ship')
-            direction = 'import'
+            direction = self.direction
             terminal = data.get('terminal')
             date = data.get('date')
             type_co = data.get('container_type')
@@ -406,6 +407,22 @@ class Morservice:
                         self.check_delta_teu(data_result)
                         self.write_result(data_result)
 
+            elif self.delta_teu > 0 and not self.data_di.empty:
+                percent40_dis = ((self.delta_teu / self.data_di_count) - 1) * 100
+                if percent40_dis >= 100:
+                    data_result_dis = self.filling_in_data(100, self.data_di)
+                    # self.check_delta_teu(data_result_dis)
+                    self.write_result(data_result_dis)
+                elif percent40_dis > 0:
+                    # self.distribution_teu('dis')
+                    data_result_dis = self.filling_in_data(percent40_dis, self.data_di)
+                    self.check_delta_teu(data_result_dis)
+                    self.write_result(data_result_dis)
+                elif percent40_dis <= 0:
+                    self.distribution_teu('dis')
+                    data_result_dis = self.filling_in_data_no_dis('dis')
+                    self.check_delta_teu(data_result_dis)
+                    self.write_result(data_result_dis)
     def get_sum_delta_teu(self, data_result):
         delta_teu = 0
         for data in data_result:
