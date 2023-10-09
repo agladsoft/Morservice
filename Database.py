@@ -13,13 +13,12 @@ class ClickHouse:
     def __init__(self):
         self.client: Client = self.connect_db()
         self.month, self.year, self.direction, self.is_ref, self.start = self.get_month_year()
-        self.start = True
 
     @staticmethod
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='10.23.4.203', database='default',
+            client: Client = get_client(host='clickhouse', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
