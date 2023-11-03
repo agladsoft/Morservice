@@ -577,6 +577,7 @@ class Extrapolate:
                 result += i
         self.import_end_export.clickhouse.write_result(result)
 
-
 if __name__ == '__main__':
+    logger.info('Start Working')
     Extrapolate().main()
+    logger.info('End Working')
