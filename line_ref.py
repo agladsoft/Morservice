@@ -1,6 +1,6 @@
-from main import Morservice,logger
+from main import Import_and_Export,logger
 
-class REF(Morservice):
+class REF(Import_and_Export):
 
     def get_delta_teu_ref(self):
         logger.info('Получение значения в delta_teo_ref из nle_cross')

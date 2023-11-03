@@ -10,4 +10,5 @@ from clickhouse_connect.driver import Client
 from clickhouse_connect.driver.query import QueryResult
 from typing import *
 
-PARAMETRS = ['LIDER LINE']
+
+PARAMETRS = ['LIDER LINE','INERCONT (GAP RESOURSE)','UCAK LINE']
