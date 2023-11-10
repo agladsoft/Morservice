@@ -231,7 +231,7 @@ class Import_and_Export:
 
     def data_no_is_not_empty(self, delta_teu: float, data_no_count: float, data_no: DataFrame, data_dis_count: float,
                              data_dis: DataFrame) -> Optional[list]:
-        percent40_not: float = self.not_percentage(delta_teu, data_no_count)
+        percent40_not: float = round(self.not_percentage(delta_teu, data_no_count))
         data_result: Union[None, list] = None
         if 45 <= percent40_not <= 55:
             data_result: list = self.filling_in_data(percent40_not, data_no)
@@ -243,6 +243,10 @@ class Import_and_Export:
         elif percent40_not > 0:
 
             if self.check_enough_teu(delta_teu, data_no_count):
+                if percent40_not >= 100 and data_dis_count <= 0:
+                    data_result: list = self.filling_in_data(100, data_no)
+                    data_result: list = self.check_delta_teu(data_result, delta_teu)
+                    return data_result
                 data_result_no: list = self.filling_in_data(50, data_no)
                 delta_teu -= self.get_sum_delta_teu(data_result_no)
                 percent40_dis: float = self.not_percentage(delta_teu, data_dis_count)
@@ -326,7 +330,7 @@ class Import_and_Export:
         elif delta_teu > 0 and not data_dis.empty:
             data_result: list = self.data_no_is_empty(delta_teu, data_dis, data_dis_count)
 
-        if df is None and not flag_not:
+        if df is None and not flag_not and data_dis_count > 0:
             diff = self.get_different_df(data_dis, data_result)
         return diff, data_result
 
@@ -520,6 +524,8 @@ class Extrapolate:
         sum_delta_teu: float = sum([i for i in [delta_teu_empty, delta_teu_imp_and_exp] if i > 0])
         dis_count, dis_df = self.import_end_export.clickhouse.get_table_in_db_positive('discrepancies_found_containers')
         not_count, not_df = self.import_end_export.clickhouse.get_table_in_db_positive('not_found_containers')
+        if sum([dis_count, not_count]) <= 0:
+            return None, False
         percent: float = ((sum_delta_teu / sum([dis_count, not_count])) - 1) * 100
 
         if 0 < percent <= 100:
@@ -576,6 +582,7 @@ class Extrapolate:
             if i:
                 result += i
         self.import_end_export.clickhouse.write_result(result)
+
 
 if __name__ == '__main__':
     logger.info('Start Working')
