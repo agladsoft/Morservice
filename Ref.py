@@ -308,7 +308,8 @@ class Import_and_Export:
         diff: Optional[DataFrame] = None
         if isinstance(df, DataFrame) and not data_dis.equals(df) and flag_not == 'dis':
             diff = self.get_diff_Dataframe(data_dis, df)
-            data_dis = df
+            data_dis = diff
+            diff = df
             data_dis_count = sum(data_dis['delta_count'].to_list())
         elif isinstance(df, DataFrame) and not data_no.equals(df) and flag_not == 'not':
             diff = self.get_diff_Dataframe(data_no, df)
