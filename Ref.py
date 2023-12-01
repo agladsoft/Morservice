@@ -410,7 +410,7 @@ class Ref(Import_and_Export):
             data_result_no = self.filling_in_data(100, data_ref_no)
             data_result_no = self.check_delta_teu(data_result_no, delta_teu)
             self.get_different_df(data_ref_copy, data_result_no)
-            return data_ref_no
+            return data_result_no
 
         return data_result
 

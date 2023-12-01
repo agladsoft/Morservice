@@ -59,12 +59,20 @@ class ClickHouse:
 
     @staticmethod
     def sort_params(df: DataFrame) -> DataFrame:
+        if not df.get('line_unified').empty:
+            df['line_unified']: DataFrame = df['line_unified'].str.upper().str.strip()
+            filter_df: DataFrame = df.loc[~df['line_unified'].isin(PARAMETRS)]
+            return filter_df
         df['operator']: DataFrame = df['operator'].str.upper().str.strip()
         filter_df: DataFrame = df.loc[~df['operator'].isin(PARAMETRS)]
         return filter_df
 
     @staticmethod
     def get_ref_line(df: DataFrame) -> DataFrame:
+        if not df.get('line_unified').empty:
+            df['line_unified']: DataFrame = df['line_unified'].str.upper().str.strip()
+            filter_df: DataFrame = df.loc[df['line_unified'].isin(PARAMETRS)]
+            return filter_df
         df['operator']: DataFrame = df['operator'].str.upper().str.strip()
         filter_df: DataFrame = df.loc[df['operator'].isin(PARAMETRS)]
         return filter_df
