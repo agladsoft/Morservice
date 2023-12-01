@@ -11,4 +11,4 @@ from clickhouse_connect.driver.query import QueryResult
 from typing import *
 
 
-PARAMETRS = ['LIDER LINE','INERCONT (GAP RESOURSE)','UCAK LINE']
+PARAMETRS = ['LIDER LINE','INERCONT (GAP RESOURSE)','UCAK LINE', 'Intercont (GAP Resourse)']

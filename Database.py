@@ -15,7 +15,7 @@ class ClickHouse:
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='clickhouse', database='default',
+            client: Client = get_client(host='10.23.4.196', database='default',
                                         username="admin", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
@@ -30,6 +30,9 @@ class ClickHouse:
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
         start: bool = data_loaded[0][4]
+        month = 10
+        direction = 'export'
+        start = True
         if not start:
             sys.exit(1)
         return month, year, direction, start
@@ -65,10 +68,13 @@ class ClickHouse:
 
     @staticmethod
     def get_ref_line(df: DataFrame) -> DataFrame:
+        if df.get('line_unified',False):
+            df['line_unified']: DataFrame = df['line_unified'].str.upper().str.strip()
+            filter_df: DataFrame = df.loc[df['line_unified'].isin(PARAMETRS)]
+            return filter_df
         df['operator']: DataFrame = df['operator'].str.upper().str.strip()
         filter_df: DataFrame = df.loc[df['operator'].isin(PARAMETRS)]
         return filter_df
-
     def get_delta_teu(self, ref: bool, empty: bool) -> int:
         logger.info('Получение значения в delta_teo из nle_cross')
         if empty:
@@ -79,6 +85,39 @@ class ClickHouse:
             f"SELECT teu_delta FROM nle_cross where `month` = {self.month} and `year` = {self.year} and direction = '{self.direction}' and is_ref = {ref} and is_empty = {empty}")
         delta_teu: int = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu if delta_teu is not None else 0
+
+    def get_popular_port(self, ship_name):
+        logger.info('')
+        month = self.month
+        year = self.year
+        while True:
+            result: QueryResult = self.client.query(
+                f"SELECT tracking_seaport,COUNT(tracking_seaport) as cont "
+                f"FROM {self.direction} where ship_name = '{ship_name}' "
+                f"and month_parsed_on = {month} and year_parsed_on = {year}"
+                f" GROUP by tracking_seaport,month_parsed_on,year_parsed_on ORDER BY cont DESC LIMIT 3")
+
+            data: Sequence = result.result_rows
+
+            # Получаем список имен столбцов
+            column_names: Sequence = result.column_names
+
+            # Преобразуем результат в DataFrame
+            df: DataFrame = pd.DataFrame(data, columns=column_names)
+            if not df.empty:
+                break
+            else:
+                if month == 1:
+                    year -= 1
+                    month = 12
+                else:
+                    month -= 1
+
+        return df, month
+
+
+
+
 
     def write_result(self, data_result):
         for data in data_result:
@@ -101,9 +140,9 @@ class ClickHouse:
             if count <= 0:
                 continue
             values.append(
-                [line, ship, direction, terminal, date, type_co, is_empty, is_ref,size, count, goods_name, None, None])
+                [line, ship, direction, terminal, date, type_co, is_empty, is_ref, size, count, goods_name, None, None])
         if values:
             self.client.insert('extrapolate', values,
                                column_names=['line', 'ship', 'direction', 'terminal', 'date', 'container_type',
-                                             'is_empty', 'is_ref','container_size',
+                                             'is_empty', 'is_ref', 'container_size',
                                              'count_container', 'goods_name', 'tracking_country', 'tracking_seaport'])

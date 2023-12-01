@@ -572,17 +572,50 @@ class Extrapolate:
             else:
                 return None, True
 
+    @staticmethod
+    def distribution_of_containers_by_ports(data: Dict, df: DataFrame):
+        data_port = { port: 0 for port in df.get('tracking_seaport')}
+        while data.get('count_container') != 0:
+            for port in df.get('tracking_seaport'):
+                if data.get('count_container') >= 1:
+                    data_port[port] += 1
+                    data['count_container'] -= 1
+                else:
+                    break
+        return data_port
+
+    @staticmethod
+    def get_information_port(lst_data):
+        return lst_data[0].get('ship')
+
+    def fill_line(self, list_data: List[dict], df: DataFrame):
+        result_line_with_port = []
+        for line in list_data:
+            if line.get('count_container') <= 0:
+                continue
+            result_line_with_port.append(self.distribution_of_containers_by_ports(line, df))
+        return result_line_with_port
+
+    def add_port_in_line(self, lst_result):
+        lst_result_add_port = []
+        for line in lst_result:
+            port = self.get_information_port(line)
+            df_port = self.import_end_export.clickhouse.get_popular_port(port)[0]
+            lst_result_add_port.extend(self.fill_line(line, df_port))
+        return lst_result_add_port
+
     def main(self):
         result_ref = self.ref.main()
         self.empty.preliminary_processing(self.ref.df_difference)
         dis_df = self.check_enough_container()
         diff, result_imp_and_exp = self.import_end_export.main(dis_df)
         result_empty = self.empty.start(diff)
-        result = []
+        result: List[dict] = []
         for i in [result_ref, result_empty, result_imp_and_exp]:
             if i:
                 result += i
-        self.import_end_export.clickhouse.write_result(result)
+        self.add_port_in_line(result)
+        # self.import_end_export.clickhouse.write_result(result)
 
 
 if __name__ == '__main__':
