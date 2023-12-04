@@ -15,8 +15,8 @@ class ClickHouse:
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='10.23.4.196', database='default',
-                                        username="admin", password="6QVnYsC4iSzz")
+            client: Client = get_client(host='10.23.4.203', database='default',
+                                        username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
@@ -30,7 +30,7 @@ class ClickHouse:
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
         start: bool = data_loaded[0][4]
-        month = 10
+        month = 8
         direction = 'export'
         start = True
         if not start:
@@ -68,7 +68,7 @@ class ClickHouse:
 
     @staticmethod
     def get_ref_line(df: DataFrame) -> DataFrame:
-        if df.get('line_unified',False):
+        if not df.get('line_unified').empty:
             df['line_unified']: DataFrame = df['line_unified'].str.upper().str.strip()
             filter_df: DataFrame = df.loc[df['line_unified'].isin(PARAMETRS)]
             return filter_df
