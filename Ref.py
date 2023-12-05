@@ -410,7 +410,7 @@ class Ref(Import_and_Export):
             data_result_no = self.filling_in_data(100, data_ref_no)
             data_result_no = self.check_delta_teu(data_result_no, delta_teu)
             self.get_different_df(data_ref_copy, data_result_no)
-            return data_ref_no
+            return data_result_no
 
         return data_result
 
@@ -573,8 +573,15 @@ class Extrapolate:
                 return None, True
 
     @staticmethod
+    def add_month_year(line_tuple: List[dict], month: int, year: int) -> None:
+        for line in line_tuple:
+            line.update({'month_port': month, 'year_port': year})
+
+    @staticmethod
     def distribution_of_containers_by_ports(data: Dict, df: DataFrame):
-        data_port = { port: 0 for port in df.get('tracking_seaport')}
+        if data.get('count_container') <= 2:
+            return {df.get('tracking_seaport').to_list()[0]: data.get('count_container')}
+        data_port = {port: 0 for port in df.get('tracking_seaport')}
         while data.get('count_container') != 0:
             for port in df.get('tracking_seaport'):
                 if data.get('count_container') >= 1:
@@ -582,27 +589,29 @@ class Extrapolate:
                     data['count_container'] -= 1
                 else:
                     break
+        data_port = {k: v for k, v in data_port.items() if v > 0}
         return data_port
 
     @staticmethod
-    def get_information_port(lst_data):
+    def get_information_port(lst_data: List[dict]):
         return lst_data[0].get('ship')
 
-    def fill_line(self, list_data: List[dict], df: DataFrame):
-        result_line_with_port = []
+    def fill_line(self, list_data: List[dict], df: DataFrame)-> None:
         for line in list_data:
             if line.get('count_container') <= 0:
                 continue
-            result_line_with_port.append(self.distribution_of_containers_by_ports(line, df))
-        return result_line_with_port
+            line.setdefault('tracking_seaport', self.distribution_of_containers_by_ports(line, df))
 
-    def add_port_in_line(self, lst_result):
-        lst_result_add_port = []
+    def add_port_in_line(self, lst_result: List[List[dict]]) -> List[List[dict]]:
         for line in lst_result:
-            port = self.get_information_port(line)
-            df_port = self.import_end_export.clickhouse.get_popular_port(port)[0]
-            lst_result_add_port.extend(self.fill_line(line, df_port))
-        return lst_result_add_port
+            port: str = self.get_information_port(line)
+            df_port: DataFrame
+            month: int
+            year: int
+            df_port, month, year = self.import_end_export.clickhouse.get_popular_port(port)
+            self.add_month_year(line, month, year)
+            self.fill_line(line, df_port)
+        return lst_result
 
     def main(self):
         result_ref = self.ref.main()
@@ -610,12 +619,12 @@ class Extrapolate:
         dis_df = self.check_enough_container()
         diff, result_imp_and_exp = self.import_end_export.main(dis_df)
         result_empty = self.empty.start(diff)
-        result: List[dict] = []
+        result = []
         for i in [result_ref, result_empty, result_imp_and_exp]:
             if i:
                 result += i
-        self.add_port_in_line(result)
-        # self.import_end_export.clickhouse.write_result(result)
+        result_port = self.add_port_in_line(result)
+        self.import_end_export.clickhouse.write_result(result_port)
 
 
 if __name__ == '__main__':

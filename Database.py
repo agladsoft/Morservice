@@ -1,3 +1,4 @@
+import datetime
 import sys
 
 from __init__ import *
@@ -62,6 +63,10 @@ class ClickHouse:
 
     @staticmethod
     def sort_params(df: DataFrame) -> DataFrame:
+        if not df.get('line_unified').empty:
+            df['line_unified']: DataFrame = df['line_unified'].str.upper().str.strip()
+            filter_df: DataFrame = df.loc[~df['line_unified'].isin(PARAMETRS)]
+            return filter_df
         df['operator']: DataFrame = df['operator'].str.upper().str.strip()
         filter_df: DataFrame = df.loc[~df['operator'].isin(PARAMETRS)]
         return filter_df
@@ -75,6 +80,7 @@ class ClickHouse:
         df['operator']: DataFrame = df['operator'].str.upper().str.strip()
         filter_df: DataFrame = df.loc[df['operator'].isin(PARAMETRS)]
         return filter_df
+
     def get_delta_teu(self, ref: bool, empty: bool) -> int:
         logger.info('Получение значения в delta_teo из nle_cross')
         if empty:
@@ -86,8 +92,8 @@ class ClickHouse:
         delta_teu: int = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu if delta_teu is not None else 0
 
-    def get_popular_port(self, ship_name):
-        logger.info('')
+    def get_popular_port(self, ship_name:str)-> Tuple[DataFrame,int,int]:
+        logger.info('Получение информации о 3-х самых популярных портах')
         month = self.month
         year = self.year
         while True:
@@ -113,19 +119,24 @@ class ClickHouse:
                 else:
                     month -= 1
 
-        return df, month
-
-
-
-
+        return df, month, year
 
     def write_result(self, data_result):
+        result = []
         for data in data_result:
-            self.write_to_table(data)
+            result.extend(self.write_to_table(data))
+        if result:
+            self.client.insert('extrapolate', result,
+                               column_names=['line', 'ship', 'direction', 'terminal', 'date', 'container_type',
+                                             'is_empty', 'is_ref', 'container_size',
+                                             'count_container', 'goods_name', 'tracking_country', 'tracking_seaport',
+                                             'month_port'])
 
-    def write_to_table(self, data_result: List[dict]) -> None:
+    def write_to_table(self, data_result: List[dict]) -> List[dict]:
         values = []
         for data in data_result:
+            if not data.get('tracking_seaport'):
+                continue
             line: str = data.get('line')
             ship: str = data.get('ship')
             direction: str = self.direction
@@ -133,16 +144,17 @@ class ClickHouse:
             date: str = data.get('date')
             type_co: int = data.get('container_type')
             size: str = data.get('container_size')
-            count: int = data.get('count_container')
+            # count: int = data.get('count_container')
             is_empty: bool = data.get('is_empty')
             is_ref: bool = data.get('is_ref')
             goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None
-            if count <= 0:
-                continue
-            values.append(
-                [line, ship, direction, terminal, date, type_co, is_empty, is_ref, size, count, goods_name, None, None])
-        if values:
-            self.client.insert('extrapolate', values,
-                               column_names=['line', 'ship', 'direction', 'terminal', 'date', 'container_type',
-                                             'is_empty', 'is_ref', 'container_size',
-                                             'count_container', 'goods_name', 'tracking_country', 'tracking_seaport'])
+            month_port = f"{data.get('year_port')}.{data.get('month_port'):02}.01"
+            for tracking_seaport, count in data.get('tracking_seaport').items():
+                if count <= 0:
+                    continue
+                values.append(
+                    [line, ship, direction, terminal, date, type_co, is_empty, is_ref, size, count, goods_name,
+                     None,
+                     tracking_seaport, datetime.strptime(month_port,"%Y.%m.%d")])
+
+        return values
