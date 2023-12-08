@@ -16,7 +16,7 @@ class ClickHouse:
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='10.23.4.203', database='default',
+            client: Client = get_client(host='clickhouse', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
@@ -31,9 +31,6 @@ class ClickHouse:
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
         start: bool = data_loaded[0][4]
-        month = 8
-        direction = 'export'
-        start = True
         if not start:
             sys.exit(1)
         return month, year, direction, start
@@ -92,7 +89,16 @@ class ClickHouse:
         delta_teu: int = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu if delta_teu is not None else 0
 
-    def get_popular_port(self, ship_name:str)-> Tuple[DataFrame,int,int]:
+    @staticmethod
+    def get_month_and_year(month, year):
+        if month == 1:
+            year -= 1
+            month = 12
+        else:
+            month -= 1
+        return month, year
+
+    def get_popular_port(self, ship_name: str) -> Tuple[DataFrame, int, int]:
         logger.info('Получение информации о 3-х самых популярных портах')
         month = self.month
         year = self.year
@@ -113,11 +119,7 @@ class ClickHouse:
             if not df.empty:
                 break
             else:
-                if month == 1:
-                    year -= 1
-                    month = 12
-                else:
-                    month -= 1
+                month, year = self.get_month_and_year(month, year)
 
         return df, month, year
 
@@ -155,6 +157,6 @@ class ClickHouse:
                 values.append(
                     [line, ship, direction, terminal, date, type_co, is_empty, is_ref, size, count, goods_name,
                      None,
-                     tracking_seaport, datetime.strptime(month_port,"%Y.%m.%d")])
+                     tracking_seaport, datetime.strptime(month_port, "%Y.%m.%d")])
 
         return values
