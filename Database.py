@@ -16,7 +16,7 @@ class ClickHouse:
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='clickhouse', database='default',
+            client: Client = get_client(host='10.23.4.203', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
@@ -31,6 +31,9 @@ class ClickHouse:
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
         start: bool = data_loaded[0][4]
+        month = 9
+        direction = 'import'
+        start = True
         if not start:
             sys.exit(1)
         return month, year, direction, start
@@ -90,7 +93,7 @@ class ClickHouse:
         return delta_teu if delta_teu is not None else 0
 
     @staticmethod
-    def get_month_and_year(month, year):
+    def get_month_and_year(month: int, year: int) -> Optional[Tuple[int, int]]:
         if month == 1:
             year -= 1
             month = 12
@@ -98,16 +101,29 @@ class ClickHouse:
             month -= 1
         return month, year
 
+    def add_percent_in_df(self,df: DataFrame) -> DataFrame:
+        summ_port = df['count'].sum()
+        for index, row in df.iterrows():
+            percent: float = round((row['count'] / summ_port) * 100)
+            df.loc[index, 'percent'] = percent
+        return self.filter_dataframe_to_percent(df)
+
+    @staticmethod
+    def filter_dataframe_to_percent(df: DataFrame) -> DataFrame:
+        filter_df = df[df['percent'] >= 10]
+        if len(filter_df) > 3:
+            return filter_df.nlargest(3, 'percent')
+        return filter_df
     def get_popular_port(self, ship_name: str) -> Tuple[DataFrame, int, int]:
         logger.info('Получение информации о 3-х самых популярных портах')
         month = self.month
         year = self.year
         while True:
             result: QueryResult = self.client.query(
-                f"SELECT tracking_seaport,COUNT(tracking_seaport) as cont "
+                f"SELECT tracking_seaport,COUNT(tracking_seaport) as count "
                 f"FROM {self.direction} where ship_name = '{ship_name}' "
                 f"and month_parsed_on = {month} and year_parsed_on = {year}"
-                f" GROUP by tracking_seaport,month_parsed_on,year_parsed_on ORDER BY cont DESC LIMIT 3")
+                f" GROUP by tracking_seaport,month_parsed_on,year_parsed_on ORDER BY count DESC")
 
             data: Sequence = result.result_rows
 
@@ -117,6 +133,7 @@ class ClickHouse:
             # Преобразуем результат в DataFrame
             df: DataFrame = pd.DataFrame(data, columns=column_names)
             if not df.empty:
+                df = self.add_percent_in_df(df)
                 break
             else:
                 month, year = self.get_month_and_year(month, year)

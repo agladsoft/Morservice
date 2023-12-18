@@ -577,26 +577,37 @@ class Extrapolate:
         for line in line_tuple:
             line.update({'month_port': month, 'year_port': year})
 
-    @staticmethod
-    def distribution_of_containers_by_ports(data: Dict, df: DataFrame):
+    def distribution_of_containers_by_ports(self, data: Dict, df: DataFrame):
         if data.get('count_container') <= 2:
             return {df.get('tracking_seaport').to_list()[0]: data.get('count_container')}
-        data_port = {port: 0 for port in df.get('tracking_seaport')}
-        while data.get('count_container') != 0:
-            for port in df.get('tracking_seaport'):
-                if data.get('count_container') >= 1:
-                    data_port[port] += 1
-                    data['count_container'] -= 1
-                else:
-                    break
+        data_port = self.filling_count_to_percent(data, df)
         data_port = {k: v for k, v in data_port.items() if v > 0}
         return data_port
+
+    def filling_count_to_percent(self, data: Dict, df: DataFrame) -> Dict:
+        data_port = {}
+        for index, item in df[::-1].iterrows():
+            data_port[item['tracking_seaport']] = int(round((item['percent'] / 100) * data.get('count_container')))
+        if sum(list(data_port.values())) != data.get('count_container'):
+            data_port = self.filling_in_missing_data(data_port, data)
+        return data_port
+
+
+    def filling_in_missing_data(self,data_port: Dict, data: Dict):
+        summ_result = sum(list(data_port.values()))
+        diff = data.get('count_container') - summ_result
+        max_port = sorted(data_port.items(), key=lambda x: -x[1])[0][0]
+        data_port[max_port] += diff
+        if sum(list(data_port.values())) == data.get('count_container'):
+            return data_port
+        return self.filling_in_missing_data(data_port,data)
+
 
     @staticmethod
     def get_information_port(lst_data: List[dict]):
         return lst_data[0].get('ship')
 
-    def fill_line(self, list_data: List[dict], df: DataFrame)-> None:
+    def fill_line(self, list_data: List[dict], df: DataFrame) -> None:
         for line in list_data:
             if line.get('count_container') <= 0:
                 continue
