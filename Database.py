@@ -16,7 +16,7 @@ class ClickHouse:
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='10.23.4.203', database='default',
+            client: Client = get_client(host='clickhouse', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
@@ -31,9 +31,6 @@ class ClickHouse:
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
         start: bool = data_loaded[0][4]
-        month = 9
-        direction = 'import'
-        start = True
         if not start:
             sys.exit(1)
         return month, year, direction, start
@@ -114,11 +111,12 @@ class ClickHouse:
         if len(filter_df) > 3:
             return filter_df.nlargest(3, 'percent')
         return filter_df
-    def get_popular_port(self, ship_name: str) -> Tuple[DataFrame, int, int]:
+    def get_popular_port(self, ship_name: str) -> Optional[Tuple[DataFrame, int, int]]:
         logger.info('Получение информации о 3-х самых популярных портах')
+        flag = True
         month = self.month
         year = self.year
-        while True:
+        while flag:
             result: QueryResult = self.client.query(
                 f"SELECT tracking_seaport,COUNT(tracking_seaport) as count "
                 f"FROM {self.direction} where ship_name = '{ship_name}' "
@@ -135,6 +133,11 @@ class ClickHouse:
             if not df.empty:
                 df = self.add_percent_in_df(df)
                 break
+            if month == 1 and year == 2022:
+                flag = False
+                df = DataFrame()
+                month = 1
+                year = 1970
             else:
                 month, year = self.get_month_and_year(month, year)
 

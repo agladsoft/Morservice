@@ -308,8 +308,7 @@ class Import_and_Export:
         diff: Optional[DataFrame] = None
         if isinstance(df, DataFrame) and not data_dis.equals(df) and flag_not == 'dis':
             diff = self.get_diff_Dataframe(data_dis, df)
-            data_dis = diff
-            diff = df
+            data_dis = df
             data_dis_count = sum(data_dis['delta_count'].to_list())
         elif isinstance(df, DataFrame) and not data_no.equals(df) and flag_not == 'not':
             diff = self.get_diff_Dataframe(data_no, df)
@@ -515,6 +514,7 @@ class Extrapolate:
                     sum_container -= round(sum_container * percent)
         return df
 
+
     def check_enough_container(self):
         delta_teu_empty: float = self.empty.delta_teu
         delta_teu_imp_and_exp: float = self.import_end_export.clickhouse.get_delta_teu(ref=False, empty=False)
@@ -530,12 +530,13 @@ class Extrapolate:
         percent: float = ((sum_delta_teu / sum([dis_count, not_count])) - 1) * 100
 
         if 0 < percent <= 100:
-            container_empty_40ft: float = round((delta_teu_empty // 2) * (percent / 100))
-            container_empty_20ft: float = delta_teu_empty - (container_empty_40ft * 2)
+            percent: float = ((sum([dis_count, not_count]) / sum_delta_teu)) * 100
+            total_number_of_containers = round(delta_teu_empty * (percent / 100))
+            container_empty_40ft: float = abs(total_number_of_containers - delta_teu_empty)
+            container_empty_20ft: float = total_number_of_containers - container_empty_40ft
             if dis_count > sum([container_empty_20ft, container_empty_40ft]):
                 dis_df = self.sample_difference_from(sum([container_empty_20ft, container_empty_40ft]), dis_df)
                 return dis_df, 'dis'
-
             # elif not_count > sum([container_empty_20ft, container_empty_40ft]):
             #     ...
 
@@ -580,12 +581,16 @@ class Extrapolate:
     def distribution_of_containers_by_ports(self, data: Dict, df: DataFrame):
         if data.get('count_container') <= 2:
             return {df.get('tracking_seaport').to_list()[0]: data.get('count_container')}
+        if df.empty:
+            return
         data_port = self.filling_count_to_percent(data, df)
         data_port = {k: v for k, v in data_port.items() if v > 0}
         return data_port
 
     def filling_count_to_percent(self, data: Dict, df: DataFrame) -> Dict:
         data_port = {}
+        if df.empty:
+            return {'tracking_seaport': None}
         for index, item in df[::-1].iterrows():
             data_port[item['tracking_seaport']] = int(round((item['percent'] / 100) * data.get('count_container')))
         if sum(list(data_port.values())) != data.get('count_container'):
