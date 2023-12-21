@@ -32,6 +32,7 @@ class ClickHouse:
         direction: str = data_loaded[0][3]
         start: bool = data_loaded[0][4]
         if not start:
+            logger.info('Не установлено значение is_on в True')
             sys.exit(1)
         return month, year, direction, start
 
