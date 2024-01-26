@@ -360,8 +360,12 @@ class Ref(Import_and_Export):
             ship = data[0].get('ship')
             date = data[0].get('date')
             count = sum([data[0].get('count_container'), data[1].get('count_container')])
-            index = data_dis.loc[(data_dis['atb_moor_pier'] == date) & (data_dis['operator'] == line) & (
-                    data_dis['ship_name_unified'] == ship)].index[0]
+            try:
+                index = data_dis.loc[(data_dis['atb_moor_pier'] == date) & (data_dis['operator'] == line) & (
+                        data_dis['ship_name_unified'] == ship)].index[0]
+            except IndexError:
+                index = data_dis.loc[(data_dis['shipment_date'] == date) & (data_dis['operator'] == line) & (
+                        data_dis['ship_name_unified'] == ship)].index[0]
             data_dis.at[index, 'delta_count'] -= count
         self.df_difference = data_dis
 
@@ -514,7 +518,6 @@ class Extrapolate:
                     sum_container -= round(sum_container * percent)
         return df
 
-
     def check_enough_container(self):
         delta_teu_empty: float = self.empty.delta_teu
         delta_teu_imp_and_exp: float = self.import_end_export.clickhouse.get_delta_teu(ref=False, empty=False)
@@ -597,16 +600,14 @@ class Extrapolate:
             data_port = self.filling_in_missing_data(data_port, data)
         return data_port
 
-
-    def filling_in_missing_data(self,data_port: Dict, data: Dict):
+    def filling_in_missing_data(self, data_port: Dict, data: Dict):
         summ_result = sum(list(data_port.values()))
         diff = data.get('count_container') - summ_result
         max_port = sorted(data_port.items(), key=lambda x: -x[1])[0][0]
         data_port[max_port] += diff
         if sum(list(data_port.values())) == data.get('count_container'):
             return data_port
-        return self.filling_in_missing_data(data_port,data)
-
+        return self.filling_in_missing_data(data_port, data)
 
     @staticmethod
     def get_information_port(lst_data: List[dict]):
@@ -641,7 +642,6 @@ class Extrapolate:
                 result += i
         result_port = self.add_port_in_line(result)
         self.import_end_export.clickhouse.write_result(result_port)
-
 
 
 if __name__ == '__main__':
