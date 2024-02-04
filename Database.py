@@ -17,7 +17,7 @@ class ClickHouse:
         try:
             logger.info('Подключение к базе данных')
             client: Client = get_client(host='clickhouse', database='default',
-                                        username="admin", password="6QVnYsC4iSzz")
+                                        username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
@@ -30,7 +30,8 @@ class ClickHouse:
         month: int = data_loaded[0][1]
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
-        start: bool = data_loaded[0][4]
+        # start: bool = data_loaded[0][4]
+        start = True
         if not start:
             logger.info('Не установлено значение is_on в True')
             sys.exit(1)
@@ -99,7 +100,7 @@ class ClickHouse:
             month -= 1
         return month, year
 
-    def add_percent_in_df(self,df: DataFrame) -> DataFrame:
+    def add_percent_in_df(self, df: DataFrame) -> DataFrame:
         summ_port = df['count'].sum()
         for index, row in df.iterrows():
             percent: float = round((row['count'] / summ_port) * 100)
@@ -112,6 +113,7 @@ class ClickHouse:
         if len(filter_df) > 3:
             return filter_df.nlargest(3, 'percent')
         return filter_df
+
     def get_popular_port(self, ship_name: str) -> Optional[Tuple[DataFrame, int, int]]:
         logger.info('Получение информации о 3-х самых популярных портах')
         flag = True
@@ -177,7 +179,21 @@ class ClickHouse:
                     continue
                 values.append(
                     [line, ship, direction, terminal, date, type_co, is_empty, is_ref, size, count, goods_name,
-                     None,
+                     self.get_tracking_country(tracking_seaport),
                      tracking_seaport, datetime.strptime(month_port, "%Y.%m.%d")])
 
         return values
+
+    def get_reference_region(self) -> DataFrame:
+        query: QueryResult = self.client.query('select * from reference_region')
+        data: Sequence = query.result_rows
+        column_names: Sequence = query.column_names
+        df: DataFrame = pd.DataFrame(data, columns=column_names)
+        return df
+
+    def get_tracking_country(self, port_name: str) -> Optional[str]:
+        reference_region: DataFrame = self.get_reference_region()
+        query: Series = (reference_region['seaport_unified'] == port_name)
+        country: List[str] = list(set(reference_region.loc[query, 'country'].to_list()))
+        tracking_country: str = country[0] if country else None
+        return tracking_country
