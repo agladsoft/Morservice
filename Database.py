@@ -30,8 +30,8 @@ class ClickHouse:
         month: int = data_loaded[0][1]
         year: int = data_loaded[0][2]
         direction: str = data_loaded[0][3]
-        # start: bool = data_loaded[0][4]
-        start = True
+        start: bool = data_loaded[0][4]
+        # start = True
         if not start:
             logger.info('Не установлено значение is_on в True')
             sys.exit(1)
