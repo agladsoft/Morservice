@@ -1,5 +1,6 @@
 import datetime
 import sys
+from typing import List, Any
 
 from __init__ import *
 
@@ -10,40 +11,59 @@ class ClickHouse:
 
     def __init__(self):
         self.client: Client = self.connect_db()
-        self.month, self.year, self.direction, self.start = self.get_month_year()
+        self.month, self.year, self.direction, self.start, self.terminal = self.get_month_year()
 
     @staticmethod
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
             client: Client = get_client(host='clickhouse', database='default',
-                                        username="admin", password="6QVnYsC4iSzz")
+                                        username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
         return client
 
+    @staticmethod
+    def get_index(data_load: Optional[List[Tuple]]) -> Optional[int]:
+        if data_load[0][4] == True and data_load[1][4] == True:
+            return
+        elif data_load[0][4] == True:
+            return 0
+        elif data_load[1][4] == True:
+            return 1
+        else:
+            return
+
     def get_month_year(self) -> Optional[Tuple]:
         result: QueryResult = self.client.query(
             f"Select * from check_month")
         data_loaded: list = result.result_rows
-        month: int = data_loaded[0][1]
-        year: int = data_loaded[0][2]
-        direction: str = data_loaded[0][3]
-        start: bool = data_loaded[0][4]
+        index = self.get_index(data_loaded)
+        if index is None:
+            logger.info('Не установлено значение is_on в True или оба терминала в True')
+            sys.exit(1)
+        month: int = data_loaded[index][1]
+        year: int = data_loaded[index][2]
+        direction: str = data_loaded[index][3]
+        start: bool = data_loaded[index][4]
+        terminal: str = data_loaded[index][5]
         # start = True
         if not start:
             logger.info('Не установлено значение is_on в True')
             sys.exit(1)
-        return month, year, direction, start
+        return month, year, direction, start, terminal
 
     def get_table_in_db_positive(self, table: str, ref: bool = False) -> Optional[Tuple[int, DataFrame]]:
         'not_found_containers'
         'discrepancies_found_containers'
-
+        if self.terminal == 'nmtp' and table == 'discrepancies_found_containers':
+            return 0, DataFrame()
+        terminal = self.terminal.upper()
         logger.info(f'Получение delta_count из представления {table}')
         result: QueryResult = self.client.query(
-            f"Select * from {table} where delta_count > 0 and month = '{self.month}' and year = '{self.year}' and direction = '{self.direction}'")
+            f"Select * from {table} where delta_count > 0 and month = '{self.month}' and year = '{self.year}'"
+            f" and direction = '{self.direction}' and stividor = '{terminal}'")
         data: Sequence = result.result_rows
 
         # Получаем список имен столбцов
@@ -82,12 +102,16 @@ class ClickHouse:
 
     def get_delta_teu(self, ref: bool, empty: bool) -> int:
         logger.info('Получение значения в delta_teo из nle_cross')
+        if self.terminal == 'nle':
+            terminal = 'НЛЭ'
+        elif self.terminal == 'nmtp':
+            terminal = 'НМТП'
         if empty:
             empty = 1
         else:
             empty = 0
         result: QueryResult = self.client.query(
-            f"SELECT teu_delta FROM nle_cross where `month` = {self.month} and `year` = {self.year} and direction = '{self.direction}' and is_ref = {ref} and is_empty = {empty}")
+            f"SELECT teu_delta FROM nle_cross where `month` = {self.month} and `year` = {self.year} and direction = '{self.direction}' and is_ref = {ref} and is_empty = {empty} and terminal = '{terminal}'")
         delta_teu: int = result.result_rows[0][0] if result.result_rows else 0
         return delta_teu if delta_teu is not None else 0
 
@@ -148,16 +172,21 @@ class ClickHouse:
 
     def write_result(self, data_result):
         result = []
-        for data in data_result:
-            result.extend(self.write_to_table(data))
+        if self.terminal == 'nle':
+            for data in data_result:
+                result.extend(self.write_to_table_nle(data))
+        elif self.terminal == 'nmtp':
+            for data in data_result:
+                result.extend(self.write_to_table_nmtp(data))
         if result:
             self.client.insert('extrapolate', result,
-                               column_names=['line', 'ship', 'direction', 'terminal', 'date', 'container_type',
+                               column_names=['line', 'ship', 'direction', 'month', 'year', 'terminal', 'date',
+                                             'container_type',
                                              'is_empty', 'is_ref', 'container_size',
                                              'count_container', 'goods_name', 'tracking_country', 'tracking_seaport',
                                              'month_port'])
 
-    def write_to_table(self, data_result: List[dict]) -> List[dict]:
+    def write_to_table_nle(self, data_result: List[dict]) -> List[dict]:
         values = []
         for data in data_result:
             if not data.get('tracking_seaport'):
@@ -178,9 +207,33 @@ class ClickHouse:
                 if count <= 0:
                     continue
                 values.append(
-                    [line, ship, direction, terminal, date, type_co, is_empty, is_ref, size, count, goods_name,
+                    [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size,
+                     count, goods_name,
                      self.get_tracking_country(tracking_seaport),
                      tracking_seaport, datetime.strptime(month_port, "%Y.%m.%d")])
+
+        return values
+
+    def write_to_table_nmtp(self, data_result: List[dict]) -> List[List[str | int | bool | Any]]:
+        values = []
+        for data in data_result:
+            line: str = data.get('line')
+            ship: str = data.get('ship')
+            direction: str = self.direction
+            terminal: str = data.get('terminal')
+            date: str = data.get('date')
+            type_co: int = data.get('container_type')
+            size: str = data.get('container_size')
+            count: int = data.get('count_container')
+            is_empty: bool = data.get('is_empty')
+            is_ref: bool = data.get('is_ref')
+            goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None
+            if count <= 0:
+                continue
+            values.append(
+                [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size, count,
+                 goods_name,
+                 None, None, None])
 
         return values
 

@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from Database import ClickHouse
@@ -110,6 +112,36 @@ class Import_and_Export:
                 data_dis.at[index, 'delta_count'] -= count
         return data_dis
 
+    def change_20_test(self, data_result: list, different: int) -> list:
+        '''Изменение 20 футового на 40 футовый контейнер'''
+        different = abs(different)
+        index: int = self.get_index(data_result)
+        if data_result[index][0]['count_container'] >= abs(different):
+            data_result[index][-1]['count_container'] += abs(different)
+            data_result[index][0]['count_container'] -= abs(different)
+            return data_result
+        else:
+            for data in data_result:
+                diff = data[0].get('count_container')
+                if different <= 0:
+                    return data_result
+                elif diff >= abs(different):
+                    data[-1]['count_container'] += abs(different)
+                    data[0]['count_container'] -= abs(different)
+                    different -= different
+                else:
+                    different -= diff
+                    data[-1]['count_container'] += abs(diff)
+                    data[0]['count_container'] -= abs(diff)
+            return data_result
+
+    def change_40_test(self, data_result: list, different: int) -> list:
+        '''Изменение 40 футового на 20 футовый '''
+        index: int = self.get_index(data_result)
+        data_result[index][0]['count_container'] += abs(different)
+        data_result[index][-1]['count_container'] -= abs(different)
+        return data_result
+
     def change_20(self, data_result: list, different: int) -> list:
         '''Изменение 20 футового на 40 футовый контейнер'''
         index: int = self.get_index(data_result)
@@ -132,10 +164,11 @@ class Import_and_Export:
             if different == 1:
                 data_result[0][1]['count_container'] += different
             elif different == -1:
-                data_result = self.change_20(data_result, different)
+                data_result = self.change_20_test(data_result, different)
 
             if self.sum_delta_count(data_result) == delta_teu:
                 return data_result
+
 
         else:
             if summa_result != int(delta_teu):
@@ -144,7 +177,7 @@ class Import_and_Export:
                     if self.sum_delta_count(data_result) == delta_teu:
                         return data_result
                 elif different < 0:
-                    data_result: list = self.change_20(data_result, different)
+                    data_result: list = self.change_20_test(data_result, different)
                     if self.sum_delta_count(data_result) == delta_teu:
                         return data_result
                     else:
@@ -181,11 +214,18 @@ class Import_and_Export:
         data_result.append(data)
         return data_result
 
+    @staticmethod
+    def get_terminal(terminal: str) -> str:
+        if terminal == "NMTP":
+            return "НМТП"
+        elif terminal == "NLE":
+            return "НЛЭ"
+
     def get_data(self, data_df: Union[dict, Series]) -> dict:
         data = {
             'line': data_df['operator'],
             'ship': data_df['ship_name_unified'],
-            'terminal': 'НЛЭ',
+            'terminal': self.get_terminal(data_df['stividor']),
             'date': self.get_date(data_df),
             'is_empty': type(self) is Empty and not type(self) is Ref
 
@@ -349,9 +389,9 @@ class Ref(Import_and_Export):
                     df.at[index, 'delta_count'] -= diff
                     return df
                 else:
-                    percent = d.get('delta_count') / summ_count
-                    df.at[index, 'delta_count'] -= round(diff * percent)
-                    diff -= round(diff * percent)
+                    percent = d.get('delta_count') / summ_count if d.get('delta_count') > 0 else 0
+                    df.at[index, 'delta_count'] -= math.ceil(diff * percent)
+                    diff -= math.ceil(diff * percent)
         return df
 
     def get_different_df(self, data_dis, data_result_dis):
@@ -640,8 +680,9 @@ class Extrapolate:
         for i in [result_ref, result_empty, result_imp_and_exp]:
             if i:
                 result += i
-        result_port = self.add_port_in_line(result)
-        self.import_end_export.clickhouse.write_result(result_port)
+        if self.import_end_export.clickhouse.terminal == 'nle':
+            result = self.add_port_in_line(result)
+        self.import_end_export.clickhouse.write_result(result)
 
 
 if __name__ == '__main__':
