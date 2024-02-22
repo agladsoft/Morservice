@@ -14,6 +14,7 @@ def get_file_handler(name: str) -> logging.FileHandler:
     return file_handler
 
 
+
 def get_logger(name: str) -> logging.getLogger:
     logger: logging.getLogger = logging.getLogger(name)
     if logger.hasHandlers():

@@ -409,6 +409,7 @@ class Ref(Import_and_Export):
             data_dis.at[index, 'delta_count'] -= count
         self.df_difference = data_dis
 
+
     def data_no_is_empty_ref(self, data_dis, data_dis_count, delta_teu, flag_ref=False):
         container_40_ft = delta_teu // 2 if delta_teu % 2 == 0 else (delta_teu // 2) + 1
         if container_40_ft >= data_dis_count:
