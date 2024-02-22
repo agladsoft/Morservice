@@ -214,7 +214,7 @@ class ClickHouse:
 
         return values
 
-    def write_to_table_nmtp(self, data_result: List[dict]) -> List[List[str | int | bool | Any]]:
+    def write_to_table_nmtp(self, data_result: List[dict]):
         values = []
         for data in data_result:
             line: str = data.get('line')
