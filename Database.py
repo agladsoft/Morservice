@@ -224,7 +224,7 @@ class ClickHouse:
             date: str = data.get('date')
             type_co: int = data.get('container_type')
             size: str = data.get('container_size')
-            count: int = data.get('count_container')
+            count: int = int(data.get('count_container'))
             is_empty: bool = data.get('is_empty')
             is_ref: bool = data.get('is_ref')
             goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None

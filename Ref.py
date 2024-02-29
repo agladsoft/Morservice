@@ -308,6 +308,24 @@ class Import_and_Export:
 
         return data_result
 
+    def subtract_the_difference(self, delta_teu, data_result):
+        different = self.sum_delta_count(data_result) - delta_teu
+        percent = 0.1 if 0.1 > different / self.sum_delta_count(data_result) else round(
+            different / self.sum_delta_count(data_result), 2)
+        if different <= 0:
+            return data_result
+        for data in data_result:
+            diff = round(data[1].get('count_container') * 0.1)
+            if different <= 0:
+                return data_result
+            elif diff >= abs(different):
+                data[1]['count_container'] -= abs(different)
+                different -= different
+            else:
+                different -= diff
+                data[1]['count_container'] -= abs(diff)
+        return data_result
+
     def data_no_is_empty(self, delta_teu: float, data_dis: DataFrame, data_di_count: float) -> Optional[list]:
         percent40_dis: float = self.not_percentage(delta_teu, data_di_count)
         data_result_dis: Union[list, None] = None
@@ -317,6 +335,13 @@ class Import_and_Export:
             data_result_dis: list = self.filling_in_data(percent40_dis, data_dis)
             data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
         elif percent40_dis <= 0:
+            if self.clickhouse.terminal == 'nmtp' and data_di_count > delta_teu:
+                # data_dis: DataFrame = self.distribution_teu(data_dis, data_di_count)
+                data_result_dis: list = self.filling_in_data(0, data_dis)
+                if self.sum_delta_count(data_result_dis) > delta_teu:
+                    data_result_dis = self.subtract_the_difference(delta_teu, data_result_dis)
+                # data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
+                return data_result_dis
             data_dis: DataFrame = self.distribution_teu(data_dis, data_di_count)
             data_result_dis: list = self.filling_in_data_no(data_dis, delta_teu)
             data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
@@ -570,7 +595,10 @@ class Extrapolate:
         not_count, not_df = self.import_end_export.clickhouse.get_table_in_db_positive('not_found_containers')
         if sum([dis_count, not_count]) <= 0:
             return None, False
-        percent: float = ((sum_delta_teu / sum([dis_count, not_count])) - 1) * 100
+        if self.import_end_export.clickhouse.terminal == 'nmtp':
+            percent: float = ((sum([dis_count, not_count]) / sum_delta_teu)) * 100
+        else:
+            percent: float = ((sum_delta_teu / sum([dis_count, not_count])) - 1) * 100
 
         if 0 < percent <= 100:
             percent: float = ((sum([dis_count, not_count]) / sum_delta_teu)) * 100
