@@ -227,7 +227,8 @@ class Import_and_Export:
             'ship': data_df['ship_name_unified'],
             'terminal': self.get_terminal(data_df['stividor']),
             'date': self.get_date(data_df),
-            'is_empty': type(self) is Empty and not type(self) is Ref
+            'is_empty': type(self) is Empty and not type(self) is Ref,
+            'vessel': data_df['vessel']
 
         }
         return data
@@ -358,7 +359,7 @@ class Import_and_Export:
             return diff_df.query('delta_count != 0')
         return
 
-    def main(self, df):
+    def main(self, df, ref_different: DataFrame = DataFrame()):
         df, flag_not = df
         delta_teu: float = self.clickhouse.get_delta_teu(ref=False, empty=False)
         data_result: Union[bool, list] = False
@@ -368,7 +369,10 @@ class Import_and_Export:
         data_no: DataFrame
         data_dis_count: float
         data_dis: DataFrame
-        data_no_count, data_no = self.clickhouse.get_table_in_db_positive('not_found_containers')
+        if self.clickhouse.terminal == 'nmtp' and not ref_different.empty:
+            data_no_count, data_no = sum(ref_different['delta_count'].to_list()), ref_different
+        else:
+            data_no_count, data_no = self.clickhouse.get_table_in_db_positive('not_found_containers')
         data_dis_count, data_dis = self.clickhouse.get_table_in_db_positive('discrepancies_found_containers')
         diff: Optional[DataFrame] = None
         if isinstance(df, DataFrame) and not data_dis.equals(df) and flag_not == 'dis':
@@ -419,18 +423,33 @@ class Ref(Import_and_Export):
                     diff -= math.ceil(diff * percent)
         return df
 
-    def get_different_df(self, data_dis, data_result_dis):
-        for data in data_result_dis:
-            line = data[0].get('line')
-            ship = data[0].get('ship')
-            date = data[0].get('date')
-            count = sum([data[0].get('count_container'), data[1].get('count_container')])
-            try:
+    def get_index_to_df(self, data_dis, data, flag=False):
+        line = data[0].get('line')
+        ship = data[0].get('ship')
+        date = data[0].get('date')
+        count = sum([data[0].get('count_container'), data[1].get('count_container')])
+        try:
+            if flag:
+                index = data_dis.loc[(data_dis['atb_moor_pier'] == date) & (data_dis['operator'] == line) & (
+                        data_dis['ship_name_unified'] == ship)].index
+            else:
                 index = data_dis.loc[(data_dis['atb_moor_pier'] == date) & (data_dis['operator'] == line) & (
                         data_dis['ship_name_unified'] == ship)].index[0]
-            except IndexError:
-                index = data_dis.loc[(data_dis['shipment_date'] == date) & (data_dis['operator'] == line) & (
-                        data_dis['ship_name_unified'] == ship)].index[0]
+        except IndexError:
+            index = data_dis.loc[(data_dis['shipment_date'] == date) & (data_dis['operator'] == line) & (
+                    data_dis['ship_name_unified'] == ship)].index[0]
+        return index, count
+
+    def get_different_df(self, data_dis, data_result_dis):
+        list_index = []
+        for data in data_result_dis:
+            index, count = self.get_index_to_df(data_dis, data)
+            if index not in list_index:
+                list_index.append(index)
+            else:
+                index = self.get_index_to_df(data_dis, data, flag=True)[0]
+                index = [i for i in index if i not in list_index][0]
+                list_index.append(index)
             data_dis.at[index, 'delta_count'] -= count
         self.df_difference = data_dis
 
@@ -486,6 +505,9 @@ class Ref(Import_and_Export):
         delta_teu: float = self.clickhouse.get_delta_teu(ref=True, empty=False)
         data_result: Optional[list] = None
         if delta_teu <= 0:
+            if self.clickhouse.terminal == 'nmtp':
+                _, self.df_difference = self.clickhouse.get_table_in_db_positive(
+                    'not_found_containers', ref=True)
             return data_result
         data_ref_no_count: int
         data_ref_no: DataFrame
@@ -510,12 +532,13 @@ class Empty(Ref, Import_and_Export):
 
     def __init__(self):
         super().__init__()
-        self.delta_teu = None
+        self.delta_teu = None if self.clickhouse.terminal != 'nmtp' else self.clickhouse.get_delta_teu(ref=False,
+                                                                                                       empty=True)
         self.result_empty = None
 
     def preliminary_processing(self, df: DataFrame):
         delta_teu: float = self.clickhouse.get_delta_teu(ref=False, empty=True)
-        if isinstance(df, DataFrame) and not df.empty:
+        if isinstance(df, DataFrame) and not df.empty and delta_teu > 0:
             df = df[df.delta_count > 0]
             count_container = sum(df['delta_count'])
             data_result_empty = self.data_no_is_empty_ref(df, count_container, delta_teu, flag_ref=True)
@@ -572,6 +595,8 @@ class Extrapolate:
 
     @staticmethod
     def sample_difference_from(sum_container, df):
+        if sum_container > sum(df['delta_count'].to_list()):
+            sum_container = sum(df['delta_count'].to_list())
         while sum_container > 0:
             for index, d in df.sort_values(by=['delta_count'], ascending=False).iterrows():
                 if sum_container <= d['delta_count']:
@@ -584,7 +609,7 @@ class Extrapolate:
         return df
 
     def check_enough_container(self):
-        delta_teu_empty: float = self.empty.delta_teu
+        delta_teu_empty: float = self.empty.clickhouse.get_delta_teu(ref=False, empty=True)
         delta_teu_imp_and_exp: float = self.import_end_export.clickhouse.get_delta_teu(ref=False, empty=False)
         if delta_teu_imp_and_exp <= 0:
             return None, False
@@ -592,7 +617,10 @@ class Extrapolate:
             return None, False
         sum_delta_teu: float = sum([i for i in [delta_teu_empty, delta_teu_imp_and_exp] if i > 0])
         dis_count, dis_df = self.import_end_export.clickhouse.get_table_in_db_positive('discrepancies_found_containers')
-        not_count, not_df = self.import_end_export.clickhouse.get_table_in_db_positive('not_found_containers')
+        if self.ref.clickhouse.terminal == 'nmtp':
+            not_count, not_df = sum(self.ref.df_difference['delta_count'].to_list()), self.ref.df_difference
+        else:
+            not_count, not_df = self.import_end_export.clickhouse.get_table_in_db_positive('not_found_containers')
         if sum([dis_count, not_count]) <= 0:
             return None, False
         if self.import_end_export.clickhouse.terminal == 'nmtp':
@@ -614,8 +642,12 @@ class Extrapolate:
             else:
                 container_empty_40ft: float = round((delta_teu_imp_and_exp // 2) * (percent / 100))
                 container_empty_20ft: float = delta_teu_imp_and_exp - (container_empty_40ft * 2)
-                union_df = self.sample_difference_from(sum([container_empty_20ft, container_empty_40ft]),
-                                                       pd.concat([not_df, dis_df], ignore_index=True))
+                all_df = pd.concat([not_df, dis_df], ignore_index=True)
+                if sum([container_empty_20ft, container_empty_40ft]) > sum(all_df['delta_count'].to_list()):
+                    sum_containers = sum(all_df['delta_count'].to_list()) - total_number_of_containers
+                else:
+                    sum_containers = sum([container_empty_20ft, container_empty_40ft])
+                union_df = self.sample_difference_from(sum_containers, all_df)
                 return union_df, 'all'
 
 
@@ -699,13 +731,24 @@ class Extrapolate:
         return lst_result
 
     def main(self):
-        result_ref = self.ref.main()
-        self.empty.preliminary_processing(self.ref.df_difference)
-        dis_df = self.check_enough_container()
-        diff, result_imp_and_exp = self.import_end_export.main(dis_df)
-        result_empty = self.empty.start(diff)
+        if self.ref.clickhouse.terminal == 'nmtp':
+            result_ref = self.ref.main()
+            if not result_ref and not self.ref.df_difference:
+                return
+            not_df = self.ref.df_difference
+            # self.empty.preliminary_processing(self.ref.df_difference)
+            dis_df = self.check_enough_container()
+            diff, result_imp_and_exp = self.import_end_export.main(dis_df, not_df)
+            result_empty = self.empty.start(diff)
+        else:
+            result_ref = self.ref.main()
+            self.empty.preliminary_processing(self.ref.df_difference)
+            dis_df = self.check_enough_container()
+            diff, result_imp_and_exp = self.import_end_export.main(dis_df)
+            result_empty = self.empty.start(diff)
         result = []
         for i in [result_ref, result_empty, result_imp_and_exp]:
+            print(self.import_end_export.sum_delta_count(i))
             if i:
                 result += i
         if self.import_end_export.clickhouse.terminal == 'nle':

@@ -12,12 +12,13 @@ class ClickHouse:
     def __init__(self):
         self.client: Client = self.connect_db()
         self.month, self.year, self.direction, self.start, self.terminal = self.get_month_year()
+        self.reference_region: DataFrame = self.get_reference_region()
 
     @staticmethod
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='clickhouse', database='default',
+            client: Client = get_client(host='10.23.4.203', database='default',
                                         username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
@@ -28,9 +29,9 @@ class ClickHouse:
     def get_index(data_load: Optional[List[Tuple]]) -> Optional[int]:
         if data_load[0][4] == True and data_load[1][4] == True:
             return
-        elif data_load[0][4] == True:
+        elif data_load[0][4]:
             return 0
-        elif data_load[1][4] == True:
+        elif data_load[1][4]:
             return 1
         else:
             return
@@ -54,6 +55,21 @@ class ClickHouse:
             sys.exit(1)
         return month, year, direction, start, terminal
 
+    def sort_ref_param_nmtp(self, df):
+        if df.empty:
+            return 0, df
+        return sum(df['delta_count'].to_list()), df
+
+    def sort_ref_param(self, df, ref):
+        if not ref and not df.empty:
+            df: DataFrame = self.sort_params(df)
+            return sum(df['delta_count'].to_list()), df
+        if df.empty:
+            return 0, df
+        if ref:
+            df: DataFrame = self.get_ref_line(df)
+            return sum(df['delta_count'].to_list()), df
+
     def get_table_in_db_positive(self, table: str, ref: bool = False) -> Optional[Tuple[int, DataFrame]]:
         'not_found_containers'
         'discrepancies_found_containers'
@@ -71,14 +87,18 @@ class ClickHouse:
 
         # Преобразуем результат в DataFrame
         df: DataFrame = pd.DataFrame(data, columns=column_names)
-        if not ref and not df.empty:
-            df: DataFrame = self.sort_params(df)
-            return sum(df['delta_count'].to_list()), df
-        if df.empty:
-            return 0, df
-        if ref:
-            df: DataFrame = self.get_ref_line(df)
-            return sum(df['delta_count'].to_list()), df
+        if self.terminal == 'nmtp':
+            return self.sort_ref_param_nmtp(df)
+        return self.sort_ref_param(df, ref)
+
+        # if not ref and not df.empty:
+        #     df: DataFrame = self.sort_params(df)
+        #     return sum(df['delta_count'].to_list()), df
+        # if df.empty:
+        #     return 0, df
+        # if ref:
+        #     df: DataFrame = self.get_ref_line(df)
+        #     return sum(df['delta_count'].to_list()), df
 
     @staticmethod
     def sort_params(df: DataFrame) -> DataFrame:
@@ -145,10 +165,10 @@ class ClickHouse:
         year = self.year
         while flag:
             result: QueryResult = self.client.query(
-                f"SELECT tracking_seaport,COUNT(tracking_seaport) as count "
-                f"FROM {self.direction} where ship_name = '{ship_name}' "
+                f"SELECT tracking_seaport_unified,COUNT(tracking_seaport_unified) as count "
+                f"FROM {self.direction}_enriched where ship_name = '{ship_name}' "
                 f"and month_parsed_on = {month} and year_parsed_on = {year}"
-                f" GROUP by tracking_seaport,month_parsed_on,year_parsed_on ORDER BY count DESC")
+                f" GROUP by tracking_seaport_unified,month_parsed_on,year_parsed_on ORDER BY count DESC Limit 3")
 
             data: Sequence = result.result_rows
 
@@ -157,6 +177,9 @@ class ClickHouse:
 
             # Преобразуем результат в DataFrame
             df: DataFrame = pd.DataFrame(data, columns=column_names)
+            df = df.rename(columns={"tracking_seaport_unified": "tracking_seaport"})
+            if not df.empty:
+                df = df.drop(df[df['count'] == 0].index)
             if not df.empty:
                 df = self.add_percent_in_df(df)
                 break
@@ -170,6 +193,36 @@ class ClickHouse:
 
         return df, month, year
 
+    def get_port_nmtp(self, line):
+        vessel = line.get('vessel')
+        operator = line.get('line')
+        atb_moor_pier = line.get('date')
+
+        result: QueryResult = self.client.query(
+            f"SELECT * FROM reference_spardeck rs "
+            f"WHERE vessel = '{vessel}' "
+            # f"and operator = '{operator}' "
+            f"and atb_moor_pier = '{atb_moor_pier}' "
+            f"and stividor = 'NMTP'")
+        data = result.result_set
+        column_names = result.column_names
+        # if data:
+        dict_data = {k: v for k, v in zip(column_names, data[0])}
+        return dict_data.get('pol_arrive') if self.direction == 'import' else dict_data.get('next_left')
+        # return None
+
+    def check_result(self, data_result: List[dict]):
+        """Подсчёт суммы teu по типу контейнера c разбивкой по типу контейнера."""
+        teu: dict = {'ref': 0, 'emty': 0, 'full': 0}
+        for data in data_result:
+            if data[9]:
+                teu['ref'] += data[11] * 2 if data[10] == 40 else 1
+            elif data[8]:
+                teu['emty'] += data[11] * 2 if data[10] == 40 else 1
+            else:
+                teu['full'] += data[11] * 2 if data[10] == 40 else 1
+        return teu
+
     def write_result(self, data_result):
         result = []
         if self.terminal == 'nle':
@@ -178,6 +231,7 @@ class ClickHouse:
         elif self.terminal == 'nmtp':
             for data in data_result:
                 result.extend(self.write_to_table_nmtp(data))
+        self.check_result(result)
         if result:
             self.client.insert('extrapolate', result,
                                column_names=['line', 'ship', 'direction', 'month', 'year', 'terminal', 'date',
@@ -228,12 +282,14 @@ class ClickHouse:
             is_empty: bool = data.get('is_empty')
             is_ref: bool = data.get('is_ref')
             goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None
+            tracking_seaport = self.get_port_nmtp(data)
+            trackung_country = self.get_tracking_country(tracking_seaport) if tracking_seaport else None
             if count <= 0:
                 continue
             values.append(
                 [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size, count,
                  goods_name,
-                 None, None, None])
+                 trackung_country, tracking_seaport, None])
 
         return values
 
@@ -245,8 +301,7 @@ class ClickHouse:
         return df
 
     def get_tracking_country(self, port_name: str) -> Optional[str]:
-        reference_region: DataFrame = self.get_reference_region()
-        query: Series = (reference_region['seaport_unified'] == port_name)
-        country: List[str] = list(set(reference_region.loc[query, 'country'].to_list()))
+        query: Series = (self.reference_region['seaport_unified'] == port_name)
+        country: List[str] = list(set(self.reference_region.loc[query, 'country'].to_list()))
         tracking_country: str = country[0] if country else None
         return tracking_country
