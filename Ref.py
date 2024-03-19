@@ -407,7 +407,7 @@ class Import_and_Export:
 class Ref(Import_and_Export):
     def __init__(self):
         super().__init__()
-        self.df_difference = None
+        self.df_difference: DataFrame = DataFrame()
 
     @staticmethod
     def change_df(df, diff):
@@ -733,7 +733,7 @@ class Extrapolate:
     def main(self):
         if self.ref.clickhouse.terminal == 'nmtp':
             result_ref = self.ref.main()
-            if not result_ref and not self.ref.df_difference:
+            if not result_ref and self.ref.df_difference.empty:
                 return
             not_df = self.ref.df_difference
             # self.empty.preliminary_processing(self.ref.df_difference)
