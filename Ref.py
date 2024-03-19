@@ -748,7 +748,6 @@ class Extrapolate:
             result_empty = self.empty.start(diff)
         result = []
         for i in [result_ref, result_empty, result_imp_and_exp]:
-            print(self.import_end_export.sum_delta_count(i))
             if i:
                 result += i
         if self.import_end_export.clickhouse.terminal == 'nle':

@@ -211,27 +211,16 @@ class ClickHouse:
         return dict_data.get('pol_arrive') if self.direction == 'import' else dict_data.get('next_left')
         # return None
 
-    def check_result(self, data_result: List[dict]):
-        """Подсчёт суммы teu по типу контейнера c разбивкой по типу контейнера."""
-        teu: dict = {'ref': 0, 'emty': 0, 'full': 0}
-        for data in data_result:
-            if data[9]:
-                teu['ref'] += data[11] * 2 if data[10] == 40 else 1
-            elif data[8]:
-                teu['emty'] += data[11] * 2 if data[10] == 40 else 1
-            else:
-                teu['full'] += data[11] * 2 if data[10] == 40 else 1
-        return teu
+
 
     def write_result(self, data_result):
         result = []
         if self.terminal == 'nle':
-            for data in data_result:
+            for index, data in enumerate(data_result):
                 result.extend(self.write_to_table_nle(data))
         elif self.terminal == 'nmtp':
             for data in data_result:
                 result.extend(self.write_to_table_nmtp(data))
-        self.check_result(result)
         if result:
             self.client.insert('extrapolate', result,
                                column_names=['line', 'ship', 'direction', 'month', 'year', 'terminal', 'date',
@@ -243,7 +232,7 @@ class ClickHouse:
     def write_to_table_nle(self, data_result: List[dict]) -> List[dict]:
         values = []
         for data in data_result:
-            if not data.get('tracking_seaport'):
+            if not data.get('tracking_seaport') and data.get('count_container') <= 0:
                 continue
             line: str = data.get('line')
             ship: str = data.get('ship')
@@ -257,6 +246,11 @@ class ClickHouse:
             is_ref: bool = data.get('is_ref')
             goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None
             month_port = f"{data.get('year_port')}.{data.get('month_port'):02}.01"
+            if not data.get('tracking_seaport'):
+                values.append(
+                    [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size,
+                     data.get('count_container'), goods_name, None, None, datetime.strptime(month_port, "%Y.%m.%d")])
+                continue
             for tracking_seaport, count in data.get('tracking_seaport').items():
                 if count <= 0:
                     continue
