@@ -295,7 +295,13 @@ class ClickHouse:
         return df
 
     def get_tracking_country(self, port_name: str) -> Optional[str]:
-        query: Series = (self.reference_region['seaport_unified'] == port_name)
-        country: List[str] = list(set(self.reference_region.loc[query, 'country'].to_list()))
+        query_seaport = (self.reference_region['seaport'] == port_name)
+        query_seaport_unified = (self.reference_region['seaport_unified'] == port_name)
+
+        # Комбинируем запросы с использованием оператора ИЛИ (|)
+        query = query_seaport | query_seaport_unified
+
+        # Применяем запрос и получаем список стран
+        country = self.reference_region.loc[query, 'country'].unique().tolist()
         tracking_country: str = country[0] if country else None
         return tracking_country
