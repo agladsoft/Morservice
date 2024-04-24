@@ -203,7 +203,7 @@ class ClickHouse:
             f"WHERE vessel = '{vessel}' "
             # f"and operator = '{operator}' "
             f"and atb_moor_pier = '{atb_moor_pier}' "
-            f"and stividor = 'NMTP'")
+            f"and stividor in ('NMTP','NCSP')")
         data = result.result_set
         column_names = result.column_names
         # if data:
