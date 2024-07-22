@@ -682,10 +682,12 @@ class Extrapolate:
             line.update({'month_port': month, 'year_port': year})
 
     def distribution_of_containers_by_ports(self, data: Dict, df: DataFrame):
-        if data.get('count_container') <= 2:
-            return {df.get('tracking_seaport').to_list()[0]: data.get('count_container')}
         if df.empty:
             return
+        if data.get('count_container') <= 2:
+            return {df.get('tracking_seaport').to_list()[0]: data.get('count_container')}
+        # if df.empty:
+        #     return
         data_port = self.filling_count_to_percent(data, df)
         data_port = {k: v for k, v in data_port.items() if v > 0}
         return data_port
