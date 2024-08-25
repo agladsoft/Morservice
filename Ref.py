@@ -286,6 +286,10 @@ class Import_and_Export:
             if self.check_enough_teu(delta_teu, data_no_count):
                 if percent40_not >= 100 and data_dis_count <= 0:
                     data_result: list = self.filling_in_data(100, data_no)
+                    # data_result: list = self.check_delta_teu(data_result, delta_teu)
+                    return data_result
+                elif percent40_not > 0 >= data_dis_count:
+                    data_result: list = self.filling_in_data(percent40_not, data_no)
                     data_result: list = self.check_delta_teu(data_result, delta_teu)
                     return data_result
                 data_result_no: list = self.filling_in_data(50, data_no)
@@ -436,8 +440,12 @@ class Ref(Import_and_Export):
                 index = data_dis.loc[(data_dis['atb_moor_pier'] == date) & (data_dis['operator'] == line) & (
                         data_dis['ship_name_unified'] == ship)].index[0]
         except IndexError:
-            index = data_dis.loc[(data_dis['shipment_date'] == date) & (data_dis['operator'] == line) & (
-                    data_dis['ship_name_unified'] == ship)].index[0]
+            try:
+                index = data_dis.loc[(data_dis['shipment_date'] == date) & (data_dis['operator'] == line) & (
+                        data_dis['ship_name_unified'] == ship)].index[0]
+            except KeyError:
+                index = \
+                    data_dis.loc[(data_dis['atb_moor_pier'] == date) & (data_dis['ship_name_unified'] == ship)].index[0]
         return index, count
 
     def get_different_df(self, data_dis, data_result_dis):
@@ -755,7 +763,6 @@ class Extrapolate:
         if self.import_end_export.clickhouse.terminal == 'nle':
             result = self.add_port_in_line(result)
         self.import_end_export.clickhouse.write_result(result)
-
 
 
 if __name__ == '__main__':
