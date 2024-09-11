@@ -18,38 +18,29 @@ class ClickHouse:
     def connect_db() -> Client:
         try:
             logger.info('Подключение к базе данных')
-            client: Client = get_client(host='clickhouse', database='default',
-                                        username="admin", password="6QVnYsC4iSzz")
+            client: Client = get_client(host='10.23.4.203', database='default',
+                                        username="default", password="6QVnYsC4iSzz")
         except httpx.ConnectError as ex_connect:
             logger.info(f'Wrong connection {ex_connect}')
             sys.exit(1)
         return client
 
     @staticmethod
-    def get_index(data_load: Optional[List[Tuple]]) -> Optional[int]:
-        if data_load[0][4] == True and data_load[1][4] == True:
+    def get_values(data_load: Optional[List[Tuple]]) -> Optional[Tuple]:
+        value = [value for value in data_load if value[4]]
+        if len(value) != 1:
             return
-        elif data_load[0][4]:
-            return 0
-        elif data_load[1][4]:
-            return 1
-        else:
-            return
+        return value[0]
 
     def get_month_year(self) -> Optional[Tuple]:
         result: QueryResult = self.client.query(
             f"Select * from check_month")
         data_loaded: list = result.result_rows
-        index = self.get_index(data_loaded)
-        if index is None:
+        list_values = self.get_values(data_loaded)
+        if list_values is None:
             logger.info('Не установлено значение is_on в True или оба терминала в True')
             sys.exit(1)
-        month: int = data_loaded[index][1]
-        year: int = data_loaded[index][2]
-        direction: str = data_loaded[index][3]
-        start: bool = data_loaded[index][4]
-        terminal: str = data_loaded[index][5]
-        # start = True
+        _, month, year, direction, start, _, terminal = list_values
         if not start:
             logger.info('Не установлено значение is_on в True')
             sys.exit(1)
@@ -120,12 +111,16 @@ class ClickHouse:
         filter_df: DataFrame = df.loc[df['operator'].isin(PARAMETRS)]
         return filter_df
 
-    def get_delta_teu(self, ref: bool, empty: bool) -> int:
-        logger.info('Получение значения в delta_teo из nle_cross')
+    def get_terminal(self):
         if self.terminal == 'nle':
             terminal = 'НЛЭ'
         elif self.terminal == 'nmtp':
             terminal = 'НМТП'
+        return terminal
+
+    def get_delta_teu(self, ref: bool, empty: bool) -> int:
+        logger.info('Получение значения в delta_teo из nle_cross')
+        terminal = self.get_terminal()
         if empty:
             empty = 1
         else:
@@ -169,7 +164,10 @@ class ClickHouse:
                 f"FROM {self.direction}_enriched where ship_name = '{ship_name}' "
                 f"and month_parsed_on = {month} and year_parsed_on = {year}"
                 f" GROUP by tracking_seaport_unified,month_parsed_on,year_parsed_on ORDER BY count DESC Limit 3")
-
+            try:
+                print(result.result_rows[0])
+            except Exception as ex:
+                df: DataFrame = DataFrame()
             data: Sequence = result.result_rows
 
             # Получаем список имен столбцов
@@ -211,8 +209,6 @@ class ClickHouse:
         return dict_data.get('pol_arrive') if self.direction == 'import' else dict_data.get('next_left')
         # return None
 
-
-
     def write_result(self, data_result):
         result = []
         if self.terminal == 'nle':
@@ -227,7 +223,7 @@ class ClickHouse:
                                              'container_type',
                                              'is_empty', 'is_ref', 'container_size',
                                              'count_container', 'goods_name', 'tracking_country', 'tracking_seaport',
-                                             'month_port'])
+                                             'month_port','is_missing'])
 
     def write_to_table_nle(self, data_result: List[dict]) -> List[dict]:
         values = []
@@ -244,12 +240,14 @@ class ClickHouse:
             # count: int = data.get('count_container')
             is_empty: bool = data.get('is_empty')
             is_ref: bool = data.get('is_ref')
-            goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None
+            goods_name: Optional[str] = self.get_goods_name(is_empty, is_ref)
             month_port = f"{data.get('year_port')}.{data.get('month_port'):02}.01"
+            is_missing = data.get('is_missing')
             if not data.get('tracking_seaport'):
                 values.append(
                     [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size,
-                     data.get('count_container'), goods_name, None, None, datetime.strptime(month_port, "%Y.%m.%d")])
+                     data.get('count_container'), goods_name, None, None, datetime.strptime(month_port, "%Y.%m.%d"),
+                     is_missing])
                 continue
             for tracking_seaport, count in data.get('tracking_seaport').items():
                 if count <= 0:
@@ -258,7 +256,7 @@ class ClickHouse:
                     [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size,
                      count, goods_name,
                      self.get_tracking_country(tracking_seaport),
-                     tracking_seaport, datetime.strptime(month_port, "%Y.%m.%d")])
+                     tracking_seaport, datetime.strptime(month_port, "%Y.%m.%d"), is_missing])
 
         return values
 
@@ -275,15 +273,16 @@ class ClickHouse:
             count: int = int(data.get('count_container'))
             is_empty: bool = data.get('is_empty')
             is_ref: bool = data.get('is_ref')
-            goods_name: Optional[str] = 'ПОРОЖНИЙ КОНТЕЙНЕР' if is_empty else None
+            goods_name: Optional[str] = self.get_goods_name(is_empty, is_ref)
             tracking_seaport = self.get_port_nmtp(data)
             trackung_country = self.get_tracking_country(tracking_seaport) if tracking_seaport else None
+            is_missing = data.get('is_missing')
             if count <= 0:
                 continue
             values.append(
                 [line, ship, direction, self.month, self.year, terminal, date, type_co, is_empty, is_ref, size, count,
                  goods_name,
-                 trackung_country, tracking_seaport, None])
+                 trackung_country, tracking_seaport, None, is_missing])
 
         return values
 
@@ -305,3 +304,12 @@ class ClickHouse:
         country = self.reference_region.loc[query, 'country'].unique().tolist()
         tracking_country: str = country[0] if country else None
         return tracking_country
+
+    @staticmethod
+    def get_goods_name(is_empty: bool, is_ref: bool):
+        if not is_ref and not is_empty:
+            return 'Н/Д'
+        elif is_empty:
+            return 'ПОРОЖНИЙ КОНТЕЙНЕР'
+        else:
+            return None
