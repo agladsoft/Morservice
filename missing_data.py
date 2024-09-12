@@ -4,10 +4,12 @@ import time
 from typing import Tuple, Any
 
 import pandas as pd
-
+from app_logger import get_logger
 from __init__ import *
 from Database import ClickHouse
 from Ref import Extrapolate
+
+logger: app_logger = get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
 
 
 class Missing(ClickHouse, Extrapolate):
@@ -80,130 +82,104 @@ class Missing(ClickHouse, Extrapolate):
             df = df.rename({'total_volume_in': 'total'}, axis=1)
         else:
             df.drop('total_volume_in', axis=1, inplace=True)
-            df = df.rename({'total_volume_out': 'total'})
+            df = df.rename({'total_volume_out': 'total'}, axis=1)
 
         return df
 
     @staticmethod
-    def not_percentage(delta_teu: float, data_count: float) -> float:
-        # logger.info('Получение процентного соотношения 40 футовых и 20 футовых контейнеров')
-        percent40: float = (float(delta_teu) / float(data_count) - 1) * 100
-        return percent40
-
-    @staticmethod
-    def fill_more_100_percent(df, delta_teu):
-        df.loc[:, '40ft'] = df['total']
-        delta_teu = delta_teu - (df['40ft'].sum() * 2)
-        return df, delta_teu
-
-    @staticmethod
-    def fill_from_0_to_100(df, delta_teu):
-        count_container = math.ceil(delta_teu / 2)
-        df['40ft'] = ((df['percent'] / 100) * count_container).round().astype(int)
-
-        # Проверяем, сколько контейнеров распределено
-        allocated_sum = df['40ft'].sum()
-
-        delta_teu = delta_teu - (allocated_sum * 2)
-
-        return df, delta_teu
-
-    @staticmethod
-    def count_containers_more(delta_teu, percent=0):
-        if percent == 0:
-            count_containers_20ft = delta_teu // 2
-            count_containers_40ft = (delta_teu // 2) // 2
-        else:
-            count_containers_40ft = (delta_teu // 2) * (percent / 100)
-            count_containers_20ft = delta_teu - (count_containers_40ft * 2)
+    def count_containers_more(delta_teu):
+        count_containers_20ft = delta_teu // 2
+        count_containers_40ft = (delta_teu // 2) // 2
         sum_count_containers = sum([count_containers_20ft, (count_containers_40ft * 2)])
         if sum_count_containers != delta_teu:
             difference = delta_teu - sum_count_containers
             count_containers_20ft += difference
         return count_containers_20ft, count_containers_40ft
 
-    def fill_less_0(self, df, delta_teu):
+    def fill_extrapolate(self, df, delta_teu):
         count_containers_20ft, count_containers_40ft = self.count_containers_more(delta_teu)
         df['40ft'] = ((df['percent'] / 100) * count_containers_40ft).round().astype(int)
         df['20ft'] = ((df['percent'] / 100) * count_containers_20ft).round().astype(int)
-        delta_teu = delta_teu - ((df['40ft'].sum() * 2) + df['20ft'].sum())
-        return df, delta_teu
+        return df
+
+    @staticmethod
+    def fill_extrapolate_ref(df, delta_teu):
+        count_containers_40ft = (delta_teu // 2)
+        df['40ft'] = ((df['percent'] / 100) * count_containers_40ft).round().astype(int)
+        return df
 
     def filling_data_ref(self, df, delta_teu):
-        percent = math.floor(self.not_percentage(delta_teu, df['total'].sum()))
         df.loc[:, 'percent'] = (df['total'] / df['total'].sum()) * 100
-        if percent >= 100:
-            df, delta_teu = self.fill_more_100_percent(df, delta_teu)
-        elif percent < 100:
-            df, delta_teu = self.fill_from_0_to_100(df, delta_teu)
-        df['20ft'] = 0
-        df['type'] = 'ref'
-        return df, delta_teu
-
-    def fill_from_0_to_100_full(self, df, delta_teu, percent):
-        count_containers_20ft, count_containers_40ft = self.count_containers_more(delta_teu, percent)
-        df['40ft'] = ((df['percent'] / 100) * count_containers_40ft).round().astype(int)
-        df['20ft'] = ((df['percent'] / 100) * count_containers_20ft).round().astype(int)
-        delta_teu = delta_teu - ((df['40ft'].sum() * 2) + df['20ft'].sum())
-        return df, delta_teu
+        df = self.fill_extrapolate_ref(df, delta_teu)
+        df.loc[:, '20ft'] = 0
+        df.loc[:, 'type'] = 'ref'
+        return df
 
     def filling_data_full_empty(self, df, delta_teu, type):
-        percent = math.floor(self.not_percentage(delta_teu, df['total'].sum()))
         df.loc[:, 'percent'] = (df['total'] / df['total'].sum()) * 100
+        df = self.fill_extrapolate(df, delta_teu)
+        df.loc[:, 'type'] = type
+        return df
 
-        if percent >= 100:
-            df, delta_teu = self.fill_more_100_percent(df, delta_teu)
-            df['20ft'] = 0
-        elif percent <= 0:
-            df, delta_teu = self.fill_less_0(df, delta_teu)
-        elif 0 < percent < 100:
-            df, delta_teu = self.fill_from_0_to_100_full(df, delta_teu, percent)
-        df['type'] = type
-        return df, delta_teu
+    @staticmethod
+    def check_equal(df, delta_teu):
+        return delta_teu == (df['20ft'].sum() + (df['40ft'].sum() * 2))
 
-    def check_equal(self, df, delta_teu):
-        return delta_teu == df['20ft'].sum() + (df['40ft'].sum() * 2)
+    def control_count_container(self, df, delta_teu):
+        # Функция для добавления контейнеров
+        def add_containers(df, delta_teu_different):
+            while delta_teu_different > 0:
+                idx_max = df['total'].idxmax()
 
-    def control_count_container(self, df, delta_teu_different, delta_teu):
-        if delta_teu_different == 0 and self.check_equal(df, delta_teu):
-            df.loc[:, 'total'] = df['total'] - (df['20ft'] + df['40ft'])
-        else:
-            sum_40ft = df['40ft'].sum()
-            sum_20ft = df['20ft'].sum()
-            sum_df = df['total'].sum()
+                # Если разница кратна 2, добавляем только 40ft контейнеры
+                if delta_teu_different >= 2 and df.loc[idx_max, 'total'] - (
+                        df.loc[idx_max, '20ft'] + df.loc[idx_max, '40ft'] * 2) >= 2:
+                    df.loc[idx_max, '40ft'] += 1
+                    delta_teu_different -= 2
+                elif df.loc[idx_max, 'total'] - (df.loc[idx_max, '20ft'] + df.loc[idx_max, '40ft'] * 2) >= 1:
+                    df.loc[idx_max, '20ft'] += 1
+                    delta_teu_different -= 1
+                else:
+                    break
+            return delta_teu_different
 
-            total_allocated = sum_20ft + sum_40ft
-            total_available = sum_df - total_allocated
+        # Функция для удаления контейнеров
+        def remove_containers(df, delta_teu_different):
+            while delta_teu_different > 0:
+                idx_max = df['total'].idxmax()
 
-            if delta_teu_different <= total_available:
-                while delta_teu_different > 0:
-                    idx_max = df['total'].idxmax()
+                # Если разница кратна 2, убираем только 40ft контейнеры
+                if delta_teu_different >= 2 and df.loc[idx_max, '40ft'] > 0:
+                    df.loc[idx_max, '40ft'] -= 1
+                    delta_teu_different -= 2
+                elif df.loc[idx_max, '20ft'] > 0:
+                    df.loc[idx_max, '20ft'] -= 1
+                    delta_teu_different -= 1
+                # Если не хватает 20ft, компенсируем с помощью 40ft
+                elif df.loc[idx_max, '40ft'] > 0:
+                    df.loc[idx_max, '40ft'] -= 1
+                    delta_teu_different -= 2
+                    df.loc[idx_max, '20ft'] += 1
+                    delta_teu_different += 1  # Коррекция добавлением 20ft
+                else:
+                    logger.error('Не обработанная логика')
+                    sys.exit(1)
+            return delta_teu_different
 
-                    max_available_space = df.loc[idx_max, 'total'] - (df.loc[idx_max, '20ft'] + df.loc[idx_max, '40ft'])
+        delta_teu_different = (df['20ft'].sum() + (df['40ft'].sum() * 2)) - delta_teu
+        # Если разница положительная — убираем контейнеры
+        if delta_teu_different > 0:
+            delta_teu_different = remove_containers(df, delta_teu_different)
 
-                    add_20ft = min(delta_teu_different, max_available_space)
+        # Если разница отрицательная — добавляем контейнеры
+        elif delta_teu_different < 0:
+            delta_teu_different = add_containers(df, -delta_teu_different)
 
-                    df.loc[idx_max, '20ft'] += add_20ft
+        # Проверяем, если все значения контейнеров равны требуемому delta_teu
+        if self.check_equal(df, delta_teu):
+            return df
 
-                    delta_teu_different -= add_20ft
-                if self.check_equal(df, delta_teu):
-                    df.loc[:, 'total'] = df['total'] - (df['20ft'] + df['40ft'])
-
-            else:
-                while delta_teu_different > 0:
-                    idx_max = df['20ft'].idxmax()
-
-                    if df.loc[idx_max, '20ft'] > 0:
-                        df.loc[idx_max, '20ft'] -= 1
-
-                        df.loc[idx_max, '40ft'] += 1
-
-                        delta_teu_different -= 1
-                    else:
-                        print("Недостаточно 20ft контейнеров для перемещения в 40ft")
-                        break
-                self.check_equal(df, delta_teu)
-                df.loc[:, 'total'] = df['total'] - (df['20ft'] + df['40ft'])
+        self.control_count_container(df, delta_teu_different, delta_teu)
 
     @staticmethod
     def get_container_type(container_type: str, container_size: int) -> str:
@@ -295,33 +271,22 @@ class Missing(ClickHouse, Extrapolate):
         _, dis_ref = self.sort_ref_param(dis_df, True)
         _, dis_full = self.sort_ref_param(dis_df, False)
         result = []
-        for i in [4333,5333,6333,7333,8333]:
-            if ref_cross:
-                fill_ref, delta_teu_ref = self.filling_data_ref(dis_ref, i)
-                if delta_teu_ref < fill_ref['total'].sum() - (fill_ref['20ft'].sum() + fill_ref['40ft'].sum()):
-                    self.control_count_container(fill_ref, delta_teu_ref, ref_cross)
-                    result.append(fill_ref)
-                else:
-                    fill_full = dis_full.copy(deep=True)
-                    fill_full, delta_teu_ref_v1 = self.filling_data_ref(fill_full, delta_teu_ref)
-                    self.control_count_container(fill_full, delta_teu_ref_v1, delta_teu_ref)
-                    ref_result_df = pd.concat([fill_ref, fill_full])
-
-                    result.append(ref_result_df)
-                    dis_full.loc[:, 'total'] = dis_full['total'] - (dis_full['total'] - fill_full['total'])
-            if full_cross:
-                fill_full = dis_full.copy(deep=True)
-                fill_full, delta_teu_full = self.filling_data_full_empty(fill_full, i, 'full')
-                self.control_count_container(fill_full, delta_teu_full, full_cross)
-                full_result_df = fill_full
-                result.append(full_result_df)
-                dis_full.loc[:, 'total'] = dis_full['total'] - (dis_full['total'] - fill_full['total'])
-            if empty_cross:
-                fill_empty = dis_full.copy(deep=True)
-                fill_empty, delta_teu_empty = self.filling_data_full_empty(fill_empty, i, 'empty')
-                self.control_count_container(fill_empty, delta_teu_empty, empty_cross)
-                result.append(fill_empty)
-            self.finish_fill(result)
+        if ref_cross:
+            fill_ref = dis_full.copy(deep=True)
+            fill_ref = self.filling_data_ref(fill_ref, ref_cross)
+            self.control_count_container(fill_ref, ref_cross)
+            result.append(fill_ref)
+        if full_cross:
+            fill_full = dis_full.copy(deep=True)
+            fill_full = self.filling_data_full_empty(fill_full, full_cross, 'full')
+            self.control_count_container(fill_full, full_cross)
+            result.append(fill_full)
+        if empty_cross:
+            fill_empty = dis_full.copy(deep=True)
+            fill_empty = self.filling_data_full_empty(fill_empty, empty_cross, 'empty')
+            self.control_count_container(fill_empty, empty_cross)
+            result.append(fill_empty)
+        self.finish_fill(result)
 
 
 Missing().main()
