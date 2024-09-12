@@ -9,7 +9,7 @@ from __init__ import *
 from Database import ClickHouse
 from Ref import Extrapolate
 
-logger: app_logger = get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
+# logger: app_logger = get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
 
 
 class Missing(ClickHouse, Extrapolate):
@@ -162,7 +162,7 @@ class Missing(ClickHouse, Extrapolate):
                     df.loc[idx_max, '20ft'] += 1
                     delta_teu_different += 1  # Коррекция добавлением 20ft
                 else:
-                    logger.error('Не обработанная логика')
+                    # logger.error('Не обработанная логика')
                     sys.exit(1)
             return delta_teu_different
 
