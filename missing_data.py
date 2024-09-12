@@ -289,4 +289,7 @@ class Missing(ClickHouse, Extrapolate):
         self.finish_fill(result)
 
 
-Missing().main()
+if __name__ == '__main__':
+    logger.info('Start Working missing')
+    Missing().main()
+    logger.info('End Working missing')
