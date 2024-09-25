@@ -292,9 +292,14 @@ class Import_and_Export:
                     data_result: list = self.filling_in_data(percent40_not, data_no)
                     data_result: list = self.check_delta_teu(data_result, delta_teu)
                     return data_result
-                data_result_no: list = self.filling_in_data(50, data_no)
-                delta_teu -= self.get_sum_delta_teu(data_result_no)
-                percent40_dis: float = self.not_percentage(delta_teu, data_dis_count)
+                if percent40_not > 50:
+                    data_result_no: list = self.filling_in_data(50, data_no)
+                    delta_teu -= self.get_sum_delta_teu(data_result_no)
+                    percent40_dis: float = self.not_percentage(delta_teu, data_dis_count)
+                else:
+                    data_result: list = self.filling_in_data(percent40_not, data_no)
+                    data_result: list = self.check_delta_teu(data_result, delta_teu)
+                    return data_result
                 if percent40_dis >= 100:
                     data_result_dis: list = self.filling_in_data(100, data_dis)
                     data_result: list = data_result_no + data_result_dis
