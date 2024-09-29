@@ -56,9 +56,14 @@ class Missing(ClickHouse, Extrapolate):
             f" and direction = '{self.direction}' and stividor = '{self.terminal.upper()}'")
         return self.get_df(result)
 
+    @staticmethod
+    def sum_delta_teu(df: DataFrame):
+        summ = sum([i for i in df['teu_delta'].to_list() if i >= 0])
+        return summ
+
     def check_missing_data(self):
         nle_cross = self.get_nle_cross()
-        if sum(nle_cross['teu_delta']) <= 0:
+        if self.sum_delta_teu(nle_cross) <= 0:
             sys.exit(1)
         not_found_containers = self.get_containers('not_found_containers')
         discrepancies_found_containers = self.get_containers('discrepancies_found_containers')
