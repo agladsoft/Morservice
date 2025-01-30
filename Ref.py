@@ -347,6 +347,13 @@ class Import_and_Export:
                     data_result_dis = self.subtract_the_difference(delta_teu, data_result_dis)
                 # data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
                 return data_result_dis
+            elif percent40_dis <= 0 and data_di_count <= data_dis['count_container'].sum():
+                data_result_dis: list = self.filling_in_data(0, data_dis)
+                if self.sum_delta_count(data_result_dis) > delta_teu:
+                    data_result_dis = self.subtract_the_difference(delta_teu, data_result_dis)
+                # data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
+                return data_result_dis
+
             data_dis: DataFrame = self.distribution_teu(data_dis, data_di_count)
             data_result_dis: list = self.filling_in_data_no(data_dis, delta_teu)
             data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
