@@ -1,13 +1,11 @@
-import math
-import sys
+import os
 import time
-from typing import Tuple, Any
 
-import pandas as pd
-from app_logger import get_logger
-from __init__ import *
-from Database import ClickHouse
-from Ref import Extrapolate
+from src.scripts.app_logger import get_logger
+from src.scripts.Database import ClickHouse
+from src.scripts.Ref import Extrapolate
+from src.scripts import app_logger
+from src.scripts.__init__ import *
 
 logger: app_logger = get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
 

@@ -1,11 +1,8 @@
 import math
+from src.scripts.Database import ClickHouse
+from src.scripts.__init__ import *
 
-import numpy as np
 
-from Database import ClickHouse
-from __init__ import *
-
-logger: app_logger = app_logger.get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
 
 
 class Import_and_Export:

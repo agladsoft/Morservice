@@ -1,7 +1,7 @@
 import sys
 import os
 import httpx
-import app_logger
+from src.scripts.app_logger import logger
 from datetime import datetime
 import pandas as pd
 from pandas import DataFrame, Series
@@ -10,5 +10,4 @@ from clickhouse_connect.driver import Client
 from clickhouse_connect.driver.query import QueryResult
 from typing import *
 
-
-PARAMETRS = ['LIDER LINE','INERCONT (GAP RESOURSE)','UCAK LINE', 'Intercont (GAP Resourse)']
+PARAMETRS = ['LIDER LINE', 'INERCONT (GAP RESOURSE)', 'UCAK LINE', 'Intercont (GAP Resourse)']

@@ -1,8 +1,11 @@
+from datetime import datetime
 import os
 import logging
 
 _log_format: str = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 _dateftm: str = "%d/%B/%Y %H:%M:%S"
+
+
 # os.environ['XL_IDP_PATH_MORSERVICE'] = '/home/uventus/PycharmProjects/Morservice'
 # os.environ['XL_IDP_PATH_MORSERVICE'] = '/Users/uventus/PycharmProjects/Morservice'
 
@@ -15,7 +18,6 @@ def get_file_handler(name: str) -> logging.FileHandler:
     return file_handler
 
 
-
 def get_logger(name: str) -> logging.getLogger:
     logger: logging.getLogger = logging.getLogger(name)
     if logger.hasHandlers():
@@ -24,3 +26,5 @@ def get_logger(name: str) -> logging.getLogger:
     logger.setLevel(logging.INFO)
     return logger
 
+
+logger = get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))

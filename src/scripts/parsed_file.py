@@ -77,13 +77,6 @@ class ImportNW(object):
         """
         df: DataFrame = pd.read_excel(self.input_file_path, dtype={"ИНН": str})
         df = df.dropna(axis=0, how='all')
-        # original_columns = list(df.columns)
-        # df = df.rename(columns=headers_eng)
-        # renamed_columns = list(df.columns)
-        # df = df.drop(columns=set(original_columns) & set(renamed_columns))
-        # df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-        # self.add_new_columns(df)
-        # self.change_type_and_values(df)
         df = df.replace({np.nan: None, "NaT": None})
         self.change_type_time(df)
         self.write_to_json(df.to_dict('records'))

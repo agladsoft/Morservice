@@ -1,10 +1,9 @@
 import datetime
 import sys
 from typing import List, Any
+from src.scripts.__init__ import *
 
-from __init__ import *
-
-logger: app_logger = app_logger.get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
+# logger: app_logger = app_logger.get_logger(os.path.basename(__file__).replace(".py", "_") + str(datetime.now().date()))
 
 
 class ClickHouse:
