@@ -331,6 +331,67 @@ class Import_and_Export:
                 data[1]['count_container'] -= abs(diff)
         return data_result
 
+    def finalize_teu_adjustment(self, target_teu, data_result):
+        """
+        Корректирует количество контейнеров, чтобы итоговое TEU соответствовало целевому.
+        Уменьшает контейнеры пропорционально по каждой линии.
+        """
+        current_teu = self.calculate_total_teu(data_result)
+        diff = current_teu - target_teu
+
+        if diff <= 0:
+            return data_result  # Если текущее TEU меньше или равно целевому, корректировка не нужна
+
+        # Коэффициент уменьшения для всех контейнеров
+        reduction_ratio = (current_teu - diff) / current_teu if current_teu > 0 else 0
+
+        # Применяем коэффициент ко всем записям
+        for data in data_result:
+            container_size = data[1].get('container_size')
+            current_count = data[1].get('count_container')
+
+            # Уменьшаем пропорционально
+            new_count = max(0, math.floor(current_count * reduction_ratio))
+            data[1]['count_container'] = new_count
+
+        # Проверяем, получили ли мы точное значение TEU
+        final_teu = self.calculate_total_teu(data_result)
+        remaining_diff = target_teu - final_teu
+
+        # Финальная корректировка: добавляем или убираем контейнеры от самых больших значений
+        if abs(remaining_diff) > 0.001:  # Если есть существенная разница
+            # Сортируем по количеству контейнеров (от большего к меньшему)
+            sorted_data = sorted(data_result, key=lambda x: x[1].get('count_container'), reverse=True)
+
+            for data in sorted_data:
+                if abs(remaining_diff) < 0.001:
+                    break
+
+                container_size = data[1].get('container_size')
+                teu_factor = container_size / 20
+                current_count = data[1].get('count_container')
+
+                if remaining_diff > 0:  # Нужно добавить TEU
+                    containers_to_add = math.ceil(remaining_diff / teu_factor)
+                    data[1]['count_container'] += containers_to_add
+                    remaining_diff -= containers_to_add * teu_factor
+                elif remaining_diff < 0 and current_count > 0:  # Нужно убрать TEU
+                    containers_to_remove = min(current_count, math.ceil(abs(remaining_diff) / teu_factor))
+                    data[1]['count_container'] -= containers_to_remove
+                    remaining_diff += containers_to_remove * teu_factor
+
+        return data_result
+
+    def calculate_total_teu(self, data_result):
+        """Вычисляет общее количество TEU для всех контейнеров"""
+        total_teu = 0
+        for data in data_result:
+            container_size = data[1].get('container_size')
+            count = data[1].get('count_container')
+            teu_factor = container_size / 20
+            total_teu += count * teu_factor
+        return total_teu
+
     def data_no_is_empty(self, delta_teu: float, data_dis: DataFrame, data_di_count: float) -> Optional[list]:
         percent40_dis: float = self.not_percentage(delta_teu, data_di_count)
         data_result_dis: Union[list, None] = None
@@ -345,6 +406,8 @@ class Import_and_Export:
                 data_result_dis: list = self.filling_in_data(0, data_dis)
                 if self.sum_delta_count(data_result_dis) > delta_teu:
                     data_result_dis = self.subtract_the_difference(delta_teu, data_result_dis)
+                    if self.sum_delta_count(data_result_dis) > delta_teu:
+                        data_result_dis = self.finalize_teu_adjustment(delta_teu, data_result_dis)
                 # data_result_dis: list = self.check_delta_teu(data_result_dis, delta_teu)
                 return data_result_dis
             elif percent40_dis <= 0 and data_di_count <= data_dis['count_container'].sum():
@@ -756,7 +819,10 @@ class Extrapolate:
             # self.empty.preliminary_processing(self.ref.df_difference)
             dis_df = self.check_enough_container()
             diff, result_imp_and_exp = self.import_end_export.main(dis_df, not_df)
-            result_empty = self.empty.start(diff)
+            if not diff:
+                result_empty = self.empty.start(not_df)
+            else:
+                result_empty = self.empty.start(diff)
         else:
             result_ref = self.ref.main()
             self.empty.preliminary_processing(self.ref.df_difference)
