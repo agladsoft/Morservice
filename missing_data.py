@@ -276,17 +276,17 @@ class Missing(ClickHouse, Extrapolate):
         _, dis_ref = self.sort_ref_param(dis_df, True)
         _, dis_full = self.sort_ref_param(dis_df, False)
         result = []
-        if ref_cross:
+        if ref_cross and ref_cross > 0:
             fill_ref = dis_full.copy(deep=True)
             fill_ref = self.filling_data_ref(fill_ref, ref_cross)
             self.control_count_container(fill_ref, ref_cross)
             result.append(fill_ref)
-        if full_cross:
+        if full_cross and full_cross > 0:
             fill_full = dis_full.copy(deep=True)
             fill_full = self.filling_data_full_empty(fill_full, full_cross, 'full')
             self.control_count_container(fill_full, full_cross)
             result.append(fill_full)
-        if empty_cross:
+        if empty_cross and empty_cross > 0:
             fill_empty = dis_full.copy(deep=True)
             fill_empty = self.filling_data_full_empty(fill_empty, empty_cross, 'empty')
             self.control_count_container(fill_empty, empty_cross)
