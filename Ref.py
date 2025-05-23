@@ -819,7 +819,7 @@ class Extrapolate:
             # self.empty.preliminary_processing(self.ref.df_difference)
             dis_df = self.check_enough_container()
             diff, result_imp_and_exp = self.import_end_export.main(dis_df, not_df)
-            if not diff:
+            if diff is None or diff.empty:
                 result_empty = self.empty.start(not_df)
             else:
                 result_empty = self.empty.start(diff)
