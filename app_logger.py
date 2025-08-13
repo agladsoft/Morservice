@@ -4,6 +4,7 @@ import logging
 _log_format: str = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 _dateftm: str = "%d/%B/%Y %H:%M:%S"
 # os.environ['XL_IDP_PATH_MORSERVICE'] = '/home/uventus/PycharmProjects/Morservice'
+# os.environ['XL_IDP_PATH_MORSERVICE'] = '/Users/uventus/PycharmProjects/Morservice'
 
 def get_file_handler(name: str) -> logging.FileHandler:
     log_dir_name: str = f"{os.environ.get('XL_IDP_PATH_MORSERVICE')}/logging"
@@ -12,6 +13,7 @@ def get_file_handler(name: str) -> logging.FileHandler:
     file_handler: logging.FileHandler = logging.FileHandler(f"{log_dir_name}/{name}.log")
     file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_dateftm))
     return file_handler
+
 
 
 def get_logger(name: str) -> logging.getLogger:
